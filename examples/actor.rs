@@ -46,7 +46,8 @@ impl MyActor {
 /// ============================================================================
 
 #[allow(bad_style)]
-mod thespian_generated__MyActor {
+#[cfg(feature = "manual_impl")]
+mod manual_generated__MyActor {
     use crate::MyActor;
     use futures::{prelude::*, select};
     use std::{future::Future, sync::Arc};

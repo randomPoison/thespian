@@ -20,7 +20,7 @@ impl<A: Actor> Deref for Addr<A> {
 }
 
 pub trait Actor: Sized {
-    type Context: ActorContext;
+    type Context: ActorContext<Actor = Self>;
     type Proxy: ActorProxy<Actor = Self>;
 
     fn start(self) -> Addr<Self> {
@@ -28,7 +28,9 @@ pub trait Actor: Sized {
     }
 }
 
-pub trait ActorContext {
+pub trait ActorContext: Sized {
+    type Actor: Actor<Context = Self>;
+
     fn into_future(self) -> Box<dyn Future<Output = ()>>;
 }
 

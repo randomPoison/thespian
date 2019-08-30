@@ -1,5 +1,6 @@
 extern crate proc_macro;
 
+use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
@@ -12,12 +13,51 @@ pub fn actor(
     _args: proc_macro::TokenStream,
     tokens: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let original = tokens.clone();
+    let mut result = tokens.clone();
 
     let input = parse_macro_input!(tokens as Actor);
     dbg!(&input);
 
-    original
+    let actor_ident = input.ident;
+    let module_ident = Ident::new(
+        &format!("thespian_generated__{}", actor_ident),
+        actor_ident.span(),
+    );
+    let context_ident = Ident::new(&format!("{}__Context", actor_ident), actor_ident.span());
+    let proxy_ident = Ident::new(&format!("{}__Proxy", actor_ident), actor_ident.span());
+
+    let generated = quote! {
+        #[doc(hidden)]
+        #[allow(bad_style)]
+        pub mod #module_ident {
+            impl thespian::Actor for super::#actor_ident {
+                type Context = #context_ident;
+                type Proxy = #proxy_ident;
+            }
+
+            #[derive(Debug)]
+            pub struct #context_ident;
+
+            impl thespian::ActorContext for #context_ident {
+                type Actor = super::#actor_ident;
+
+                fn into_future(self) -> Box<dyn std::future::Future<Output = ()>> {
+                    unimplemented!()
+                }
+            }
+
+            #[derive(Debug)]
+            pub struct #proxy_ident;
+
+            impl thespian::ActorProxy for #proxy_ident {
+                type Actor = super::#actor_ident;
+            }
+        }
+    };
+    println!("{}", generated);
+
+    result.extend(proc_macro::TokenStream::from(generated));
+    result
 }
 
 // TODO: Support generic actor types.
@@ -110,6 +150,7 @@ impl Parse for ActorMethod {
 
         // TODO: I guess this will probably break on `where` clauses?
 
+        // NOTE: We must fully parse the body of the method in order to 
         let content;
         braced!(content in input);
         let _ = content.call(Block::parse_within)?;
