@@ -1,0 +1,11 @@
+[package]
+name = "thespian"
+version = "0.1.0"
+authors = ["David LeGare <dlegare.1001@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly"] }
+
+[dev-dependencies]
+runtime = "0.3.0-alpha.7"
