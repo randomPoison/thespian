@@ -5,6 +5,8 @@ use futures::{
 };
 use std::{future::Future, marker::PhantomData, ops::Deref, pin::Pin};
 
+pub use thespian_derive::actor;
+
 pub struct Addr<A: Actor> {
     proxy: A::Proxy,
 }

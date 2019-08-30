@@ -6,6 +6,9 @@ edition = "2018"
 
 [dependencies]
 futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly"] }
+thespian-derive = { path = "./thespian-derive" }
 
 [dev-dependencies]
 runtime = "0.3.0-alpha.7"
+
+[workspace]

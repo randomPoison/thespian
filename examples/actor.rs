@@ -14,6 +14,7 @@ pub struct MyActor {
     id: usize,
 }
 
+#[thespian::actor]
 impl MyActor {
     pub fn name(&self) -> Arc<String> {
         self.name.clone()

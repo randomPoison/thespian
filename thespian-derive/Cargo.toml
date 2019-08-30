@@ -1,0 +1,10 @@
+[package]
+name = "thespian-derive"
+version = "0.1.0"
+authors = ["David LeGare <dlegare.1001@gmail.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
