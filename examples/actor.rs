@@ -2,10 +2,21 @@ use runtime::time::*;
 use std::{sync::Arc, time::Duration};
 use thespian::*;
 
-fn main() {
-    // Start the actor and `my_task` as two concurrent tasks.
+#[runtime::main]
+async fn main() {
+    // Spawn the actor as a concurrent task.
     let actor = MyActor::default().start();
-    runtime::spawn(my_task(actor));
+
+    // Communicate asynchronously with the actor from the current task, transparently
+    // using message passing under the hood.
+    loop {
+        Delay::new(Duration::from_secs(3)).await;
+        let id = actor
+            .add_id(1)
+            .await
+            .expect("Failed to invoke `add_id` on actor");
+        println!("New ID: {}", id);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -20,20 +31,13 @@ impl MyActor {
         self.name.clone()
     }
 
+    pub fn set_name(&mut self, name: String) {
+        self.name = Arc::new(name);
+    }
+
     pub async fn add_id(&mut self, value: usize) -> usize {
         self.id += value;
         self.id
-    }
-}
-
-pub async fn my_task(actor: Addr<MyActor>) {
-    loop {
-        Delay::new(Duration::from_secs(3)).await;
-        let id = actor
-            .add_id(1)
-            .await
-            .expect("Failed to invoke `add_id` on actor");
-        println!("New ID: {}", id);
     }
 }
 
@@ -42,7 +46,7 @@ pub async fn my_task(actor: Addr<MyActor>) {
 /// ============================================================================
 
 #[allow(bad_style)]
-mod generated {
+mod thespian_generated__MyActor {
     use crate::MyActor;
     use futures::{prelude::*, select};
     use std::{future::Future, sync::Arc};
