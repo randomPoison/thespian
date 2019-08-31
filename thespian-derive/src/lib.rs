@@ -83,25 +83,6 @@ impl Parse for Actor {
             methods.push(content.parse()?);
         }
 
-        for method in &methods {
-            if method.ident == "new" {
-                return Err(syn::Error::new(
-                    method.ident.span(),
-                    format!(
-                        "method name conflicts with generated fn `{}Client::new`",
-                        ident
-                    ),
-                ));
-            }
-
-            if method.ident == "serve" {
-                return Err(syn::Error::new(
-                    method.ident.span(),
-                    format!("method name conflicts with generated fn `{}::serve`", ident),
-                ));
-            }
-        }
-
         Ok(Actor {
             attrs,
             ident,
