@@ -1,41 +1,83 @@
 use futures::{
-    channel::oneshot,
+    channel::{mpsc, oneshot},
     prelude::*,
-    task::{Context, Poll},
+    task::Poll,
 };
-use std::{future::Future, marker::PhantomData, ops::Deref, pin::Pin};
+use std::{future::Future, ops::Deref};
 
+mod envelope;
+mod message;
+
+pub use crate::{envelope::*, message::*};
 pub use thespian_derive::actor;
 
-pub struct Addr<A: Actor> {
-    proxy: A::Proxy,
-}
-
-impl<A: Actor> Deref for Addr<A> {
-    type Target = A::Proxy;
-
-    fn deref(&self) -> &Self::Target {
-        &self.proxy
-    }
-}
-
 pub trait Actor: Sized {
-    type Context: ActorContext<Actor = Self>;
     type Proxy: ActorProxy<Actor = Self>;
 
-    fn start(self) -> Addr<Self> {
-        unimplemented!()
+    fn into_context(self) -> (Self::Proxy, Context<Self>) {
+        // TODO: Make the channel buffer configurable.
+        let (sender, receiver) = mpsc::channel(16);
+        let proxy = Self::Proxy::new(ProxyFor { sink: sender });
+
+        let context = Context {
+            actor: self,
+            stream: receiver,
+        };
+
+        (proxy, context)
     }
 }
 
-pub trait ActorContext: Sized {
-    type Actor: Actor<Context = Self>;
-
-    fn into_future(self) -> Box<dyn Future<Output = ()>>;
+pub struct Context<A: Actor> {
+    actor: A,
+    stream: mpsc::Receiver<Envelope<A>>,
 }
 
-pub trait ActorProxy: Sized {
+impl<A: Actor> Context<A> {
+    /// Consumes the context, returning a future tha will run the actor until it is stopped.
+    pub async fn run(mut self) {
+        while let Some(envelope) = self.stream.next().await {
+            match envelope {
+                Envelope::Sync(message) => message.handle(&mut self.actor),
+                Envelope::Async(message) => message.handle(&mut self.actor).await,
+            }
+        }
+    }
+}
+
+pub trait ActorProxy: Sized + Clone {
     type Actor: Actor<Proxy = Self>;
+
+    fn new(inner: ProxyFor<Self::Actor>) -> Self;
+}
+
+#[derive(Debug)]
+pub struct ProxyFor<A: Actor> {
+    sink: mpsc::Sender<Envelope<A>>,
+}
+
+impl<A: Actor> Clone for ProxyFor<A> {
+    fn clone(&self) -> Self {
+        Self {
+            sink: self.sink.clone(),
+        }
+    }
+}
+
+impl<A: Actor> ProxyFor<A> {
+    pub async fn send_sync<M: SyncMessage>(
+        &mut self,
+        message: M,
+    ) -> Result<M::Result, MessageError> {
+        unimplemented!()
+    }
+
+    pub async fn send_async<M: AsyncMessage>(
+        &mut self,
+        message: M,
+    ) -> Result<<M::Future as Future>::Output, MessageError> {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug)]
@@ -47,26 +89,4 @@ pub struct MessageError {
 pub enum MessageErrorCause {
     MailboxFull,
     ActorStopped,
-}
-
-pub struct MessageSender<M, R> {
-    _marker: PhantomData<(M, R)>,
-}
-
-impl<M, R> MessageSender<M, R> {
-    pub async fn send(&self, _message: M) -> Result<R, MessageError> {
-        unimplemented!()
-    }
-}
-
-pub struct MessageReceiver<M, R> {
-    _marker: PhantomData<(M, R)>,
-}
-
-impl<M, R> Stream for MessageReceiver<M, R> {
-    type Item = (M, oneshot::Sender<R>);
-
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        unimplemented!()
-    }
 }
