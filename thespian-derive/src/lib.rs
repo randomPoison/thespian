@@ -4,7 +4,7 @@ use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    token::{Comma, Async},
+    token::{Async, Comma},
     *,
 };
 
@@ -16,7 +16,6 @@ pub fn actor(
     let mut result = tokens.clone();
 
     let input = parse_macro_input!(tokens as Actor);
-    dbg!(&input);
 
     let actor_ident = input.ident;
     let module_ident = format_ident!("thespian_generated__{}", actor_ident);
@@ -24,7 +23,10 @@ pub fn actor(
     let proxy_ident = format_ident!("{}__Proxy", actor_ident);
 
     let proxy_methods = input.methods.iter().map(ActorMethod::quote_proxy_method);
-    let method_structs = input.methods.iter().map(|method| method.quote_message_struct(&actor_ident));
+    let method_structs = input
+        .methods
+        .iter()
+        .map(|method| method.quote_message_struct(&actor_ident));
 
     let generated = quote! {
         impl thespian::Actor for #actor_ident {
