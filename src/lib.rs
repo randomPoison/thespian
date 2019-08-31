@@ -39,7 +39,15 @@ pub trait ActorProxy: Sized {
 }
 
 #[derive(Debug)]
-pub struct MessageError;
+pub struct MessageError {
+    cause: MessageErrorCause,
+}
+
+#[derive(Debug)]
+pub enum MessageErrorCause {
+    MailboxFull,
+    ActorStopped,
+}
 
 pub struct MessageSender<M, R> {
     _marker: PhantomData<(M, R)>,

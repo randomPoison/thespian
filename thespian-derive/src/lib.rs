@@ -1,10 +1,10 @@
 extern crate proc_macro;
 
-use quote::quote;
+use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    token::*,
+    token::{Comma, Async},
     *,
 };
 
@@ -19,39 +19,41 @@ pub fn actor(
     dbg!(&input);
 
     let actor_ident = input.ident;
-    let module_ident = Ident::new(
-        &format!("thespian_generated__{}", actor_ident),
-        actor_ident.span(),
-    );
-    let context_ident = Ident::new(&format!("{}__Context", actor_ident), actor_ident.span());
-    let proxy_ident = Ident::new(&format!("{}__Proxy", actor_ident), actor_ident.span());
+    let module_ident = format_ident!("thespian_generated__{}", actor_ident);
+    let context_ident = format_ident!("{}__Context", actor_ident);
+    let proxy_ident = format_ident!("{}__Proxy", actor_ident);
+
+    let proxy_methods = input.methods.iter().map(ActorMethod::quote_proxy_method);
+    let method_structs = input.methods.iter().map(|method| method.quote_message_struct(&actor_ident));
 
     let generated = quote! {
-        #[doc(hidden)]
+        impl thespian::Actor for #actor_ident {
+            type Context = #context_ident;
+            type Proxy = #proxy_ident;
+        }
+
         #[allow(bad_style)]
-        pub mod #module_ident {
-            impl thespian::Actor for super::#actor_ident {
-                type Context = #context_ident;
-                type Proxy = #proxy_ident;
+        #[derive(Debug)]
+        pub struct #context_ident;
+
+        impl thespian::ActorContext for #context_ident {
+            type Actor = #actor_ident;
+
+            fn into_future(self) -> Box<dyn std::future::Future<Output = ()>> {
+                unimplemented!()
             }
+        }
 
-            #[derive(Debug)]
-            pub struct #context_ident;
+        #[allow(bad_style)]
+        #[derive(Debug)]
+        pub struct #proxy_ident;
 
-            impl thespian::ActorContext for #context_ident {
-                type Actor = super::#actor_ident;
+        impl thespian::ActorProxy for #proxy_ident {
+            type Actor = #actor_ident;
+        }
 
-                fn into_future(self) -> Box<dyn std::future::Future<Output = ()>> {
-                    unimplemented!()
-                }
-            }
-
-            #[derive(Debug)]
-            pub struct #proxy_ident;
-
-            impl thespian::ActorProxy for #proxy_ident {
-                type Actor = super::#actor_ident;
-            }
+        impl #proxy_ident {
+            #( #proxy_methods )*
         }
     };
     println!("{}", generated);
@@ -119,6 +121,31 @@ struct ActorMethod {
     output: ReturnType,
 }
 
+impl ActorMethod {
+    fn quote_proxy_method(&self) -> proc_macro2::TokenStream {
+        let ident = &self.ident;
+        let args = &self.args;
+
+        let result_type = match &self.output {
+            ReturnType::Default => Box::new(syn::parse_str("()").unwrap()),
+            ReturnType::Type(_, ty) => ty.clone(),
+        };
+
+        quote! {
+            pub async fn #ident(&self, #args) -> Result<#result_type, thespian::MessageError> {
+                unimplemented!()
+            }
+        }
+    }
+
+    fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
+        let ident = format_ident!("{}__{}", actor_ident, self.ident);
+        quote! {
+            struct #ident;
+        }
+    }
+}
+
 impl Parse for ActorMethod {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let attrs = input.call(Attribute::parse_outer)?;
@@ -150,13 +177,13 @@ impl Parse for ActorMethod {
 
         // TODO: I guess this will probably break on `where` clauses?
 
-        // NOTE: We must fully parse the body of the method in order to 
+        // NOTE: We must fully parse the body of the method in order to
         let content;
         braced!(content in input);
         let _ = content.call(Block::parse_within)?;
 
         let receiver = receiver.ok_or_else(|| {
-            Error::new(
+            syn::Error::new(
                 ident.span(),
                 "Actor method must take `&self` or `&mut self`",
             )
