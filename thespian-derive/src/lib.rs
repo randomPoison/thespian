@@ -4,6 +4,7 @@ use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
+    spanned::Spanned,
     token::{Async, Comma},
     *,
 };
@@ -20,7 +21,10 @@ pub fn actor(
     let actor_ident = input.ident;
     let proxy_ident = format_ident!("{}Proxy", actor_ident);
 
-    let proxy_methods = input.methods.iter().map(ActorMethod::quote_proxy_method);
+    let proxy_methods = input
+        .methods
+        .iter()
+        .map(|method| method.quote_proxy_method(&actor_ident));
     let method_structs = input
         .methods
         .iter()
@@ -31,7 +35,6 @@ pub fn actor(
             type Proxy = #proxy_ident;
         }
 
-        #[allow(bad_style)]
         #[derive(Debug, Clone)]
         pub struct #proxy_ident {
             inner: thespian::ProxyFor<#actor_ident>,
@@ -51,7 +54,6 @@ pub fn actor(
 
         #( #method_structs )*
     };
-    println!("{}", generated);
 
     result.extend(proc_macro::TokenStream::from(generated));
     result
@@ -98,27 +100,106 @@ struct ActorMethod {
 }
 
 impl ActorMethod {
-    fn quote_proxy_method(&self) -> proc_macro2::TokenStream {
+    fn quote_proxy_method(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
+        let vis = &self.vis;
         let ident = &self.ident;
+
+        // TODO: We can't use `args` directly as the parameters for the function since
+        // the user might have used a pattern for one of the parameters instead of
+        // binding it to a variable name. In these cases, we need to generate an
+        // alternate variable name to use instead.
         let args = &self.args;
 
-        let result_type = match &self.output {
-            ReturnType::Default => Box::new(syn::parse_str("()").unwrap()),
-            ReturnType::Type(_, ty) => ty.clone(),
+        // Determine which send method on `ProxyFor<A>` should be used to send the method
+        // based on whether or not the message handler is async.
+        let send_method = if self.asyncness.is_some() {
+            quote! { send_async }
+        } else {
+            quote! { send_sync }
         };
 
+        // Generate the expression for initializing the message object.
+        let struct_ident = self.message_struct_ident(actor_ident);
+        let struct_params = self.args.iter().map(|pat| &pat.pat);
+
+        let result_type = self.result_type();
+
         quote! {
-            pub async fn #ident(&self, #args) -> Result<#result_type, thespian::MessageError> {
-                unimplemented!()
+            #vis async fn #ident(&mut self, #args) -> Result<#result_type, thespian::MessageError> {
+                self.inner.#send_method(#struct_ident(#( #struct_params )*)).await
             }
         }
     }
 
     fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
-        let ident = format_ident!("{}__{}", actor_ident, self.ident);
+        let ident = self.message_struct_ident(actor_ident);
         let args = self.args.iter().map(|pat| &pat.ty);
+        let message_impl = if self.asyncness.is_some() {
+            self.impl_async_message(actor_ident)
+        } else {
+            self.impl_sync_message(actor_ident)
+        };
+
         quote! {
+            #[allow(bad_style)]
             struct #ident(#( #args )*);
+
+            #message_impl
+        }
+    }
+
+    fn impl_sync_message(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
+        let method_ident = &self.ident;
+        let struct_ident = self.message_struct_ident(actor_ident);
+        let result_type = self.result_type();
+        let forward_params = self
+            .args
+            .iter()
+            .enumerate()
+            .map(|(index, pat)| LitInt::new(&format!("{}", index), pat.span()));
+
+        quote! {
+            impl thespian::SyncMessage for #struct_ident {
+                type Actor = #actor_ident;
+                type Result = #result_type;
+
+                fn handle(self, actor: &mut Self::Actor) -> Self::Result {
+                    actor.#method_ident(#( self.#forward_params, )*)
+                }
+            }
+        }
+    }
+
+    fn impl_async_message(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
+        let method_ident = &self.ident;
+        let struct_ident = self.message_struct_ident(actor_ident);
+        let result_type = self.result_type();
+        let forward_params = self
+            .args
+            .iter()
+            .enumerate()
+            .map(|(index, pat)| LitInt::new(&format!("{}", index), pat.span()));
+
+        quote! {
+            impl thespian::AsyncMessage for #struct_ident {
+                type Actor = #actor_ident;
+                type Result = #result_type;
+
+                fn handle(self, actor: &mut Self::Actor) -> futures::future::BoxFuture<'_, Self::Result> {
+                    futures::future::FutureExt::boxed(actor.#method_ident(#( self.#forward_params, )*))
+                }
+            }
+        }
+    }
+
+    fn message_struct_ident(&self, actor_ident: &Ident) -> Ident {
+        format_ident!("{}__{}", actor_ident, self.ident)
+    }
+
+    fn result_type(&self) -> Box<Type> {
+        match &self.output {
+            ReturnType::Default => Box::new(syn::parse_str("()").unwrap()),
+            ReturnType::Type(_, ty) => ty.clone(),
         }
     }
 }

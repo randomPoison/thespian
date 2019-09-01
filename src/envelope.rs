@@ -11,7 +11,7 @@ use crate::{Actor, AsyncErasedMessage, AsyncMessage, SyncErasedMessage, SyncMess
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use std::fmt;
 
-pub enum Envelope<A: Actor> {
+pub(crate) enum Envelope<A: Actor> {
     Sync(Box<dyn SyncErasedMessage<A>>),
     Async(Box<dyn AsyncErasedMessage<A>>),
 }
@@ -25,7 +25,7 @@ impl<A: Actor> fmt::Debug for Envelope<A> {
     }
 }
 
-pub struct SyncEnvelope<M: SyncMessage> {
+pub(crate) struct SyncEnvelope<M: SyncMessage> {
     pub(crate) result_sender: oneshot::Sender<M::Result>,
     pub(crate) message: M,
 }
@@ -41,7 +41,7 @@ impl<M: SyncMessage> SyncErasedMessage<M::Actor> for SyncEnvelope<M> {
     }
 }
 
-pub struct AsyncEnvelope<M: AsyncMessage> {
+pub(crate) struct AsyncEnvelope<M: AsyncMessage> {
     pub(crate) result_sender: oneshot::Sender<M::Result>,
     pub(crate) message: M,
 }

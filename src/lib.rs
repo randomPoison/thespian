@@ -1,3 +1,4 @@
+use crate::envelope::*;
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -7,7 +8,7 @@ use log::*;
 mod envelope;
 mod message;
 
-pub use crate::{envelope::*, message::*};
+pub use crate::message::*;
 pub use thespian_derive::actor;
 
 pub trait Actor: 'static + Sized + Send {
