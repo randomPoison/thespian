@@ -5,7 +5,8 @@ use thespian::*;
 #[runtime::main]
 async fn main() {
     // Spawn the actor as a concurrent task.
-    let actor = MyActor::default().start();
+    let (actor, context) = MyActor::default().into_context();
+    runtime::spawn(context.run());
 
     // Communicate asynchronously with the actor from the current task, transparently
     // using message passing under the hood.

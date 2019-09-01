@@ -18,9 +18,7 @@ pub fn actor(
     let input = parse_macro_input!(tokens as Actor);
 
     let actor_ident = input.ident;
-    let module_ident = format_ident!("thespian_generated__{}", actor_ident);
-    let context_ident = format_ident!("{}__Context", actor_ident);
-    let proxy_ident = format_ident!("{}__Proxy", actor_ident);
+    let proxy_ident = format_ident!("{}Proxy", actor_ident);
 
     let proxy_methods = input.methods.iter().map(ActorMethod::quote_proxy_method);
     let method_structs = input
@@ -30,33 +28,28 @@ pub fn actor(
 
     let generated = quote! {
         impl thespian::Actor for #actor_ident {
-            type Context = #context_ident;
             type Proxy = #proxy_ident;
         }
 
         #[allow(bad_style)]
-        #[derive(Debug)]
-        pub struct #context_ident;
-
-        impl thespian::ActorContext for #context_ident {
-            type Actor = #actor_ident;
-
-            fn into_future(self) -> Box<dyn std::future::Future<Output = ()>> {
-                unimplemented!()
-            }
+        #[derive(Debug, Clone)]
+        pub struct #proxy_ident {
+            inner: thespian::ProxyFor<#actor_ident>,
         }
-
-        #[allow(bad_style)]
-        #[derive(Debug)]
-        pub struct #proxy_ident;
 
         impl thespian::ActorProxy for #proxy_ident {
             type Actor = #actor_ident;
+
+            fn new(inner: thespian::ProxyFor<#actor_ident>) -> Self {
+                Self { inner }
+            }
         }
 
         impl #proxy_ident {
             #( #proxy_methods )*
         }
+
+        #( #method_structs )*
     };
     println!("{}", generated);
 
@@ -123,8 +116,9 @@ impl ActorMethod {
 
     fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
         let ident = format_ident!("{}__{}", actor_ident, self.ident);
+        let args = self.args.iter().map(|pat| &pat.ty);
         quote! {
-            struct #ident;
+            struct #ident(#( #args )*);
         }
     }
 }
