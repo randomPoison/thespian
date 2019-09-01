@@ -1,9 +1,8 @@
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
-    task::Poll,
 };
-use std::{future::Future, ops::Deref};
+use log::*;
 
 mod envelope;
 mod message;
@@ -11,7 +10,7 @@ mod message;
 pub use crate::{envelope::*, message::*};
 pub use thespian_derive::actor;
 
-pub trait Actor: Sized {
+pub trait Actor: 'static + Sized + Send {
     type Proxy: ActorProxy<Actor = Self>;
 
     fn into_context(self) -> (Self::Proxy, Context<Self>) {
@@ -65,24 +64,67 @@ impl<A: Actor> Clone for ProxyFor<A> {
 }
 
 impl<A: Actor> ProxyFor<A> {
-    pub async fn send_sync<M: SyncMessage>(
+    pub async fn send_sync<M: SyncMessage<Actor = A>>(
         &mut self,
         message: M,
     ) -> Result<M::Result, MessageError> {
-        unimplemented!()
+        let (result_sender, result) = oneshot::channel();
+        let erased_message = Box::new(SyncEnvelope {
+            message,
+            result_sender,
+        });
+        let envelope = Envelope::Sync(erased_message);
+        self.sink
+            .send(envelope)
+            .await
+            .map_err::<MessageError, _>(Into::into)?;
+        result.await.map_err(Into::into)
     }
 
-    pub async fn send_async<M: AsyncMessage>(
+    pub async fn send_async<M: AsyncMessage<Actor = A>>(
         &mut self,
         message: M,
-    ) -> Result<<M::Future as Future>::Output, MessageError> {
-        unimplemented!()
+    ) -> Result<M::Result, MessageError> {
+        let (result_sender, result) = oneshot::channel();
+        let erased_message = Box::new(AsyncEnvelope {
+            message,
+            result_sender,
+        });
+        let envelope = Envelope::Async(erased_message);
+        self.sink
+            .send(envelope)
+            .await
+            .map_err::<MessageError, _>(Into::into)?;
+        result.await.map_err(Into::into)
     }
 }
 
 #[derive(Debug)]
 pub struct MessageError {
     cause: MessageErrorCause,
+}
+
+impl From<oneshot::Canceled> for MessageError {
+    fn from(_: oneshot::Canceled) -> Self {
+        MessageError {
+            cause: MessageErrorCause::ActorStopped,
+        }
+    }
+}
+
+impl From<mpsc::SendError> for MessageError {
+    fn from(from: mpsc::SendError) -> Self {
+        let cause = if from.is_full() {
+            MessageErrorCause::MailboxFull
+        } else if from.is_disconnected() {
+            MessageErrorCause::ActorStopped
+        } else {
+            warn!("Unknown cause of send error: {:?}", from);
+            MessageErrorCause::ActorStopped
+        };
+
+        MessageError { cause }
+    }
 }
 
 #[derive(Debug)]

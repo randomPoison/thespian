@@ -1,5 +1,4 @@
-use futures::{prelude::*, select};
-use std::{future::Future, sync::Arc};
+use futures::{future::BoxFuture, prelude::*};
 use thespian::*;
 
 #[derive(Debug, Default)]
@@ -47,10 +46,9 @@ struct MyActor__add_id(usize);
 
 impl AsyncMessage for MyActor__add_id {
     type Actor = MyActor;
-    type Future = Box<dyn Future<Output = usize> + Unpin>;
+    type Result = usize;
 
-    fn handle(self, actor: &mut Self::Actor) -> Self::Future {
-        // Box::new(Box::pin(actor.add_id(self.0)))
-        unimplemented!()
+    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Result> {
+        actor.add_id(self.0).boxed()
     }
 }
