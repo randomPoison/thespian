@@ -13,6 +13,20 @@ impl MyActor {
     }
 }
 
+#[runtime::test]
+async fn test_actor_impl() {
+    let (mut actor, context) = MyActor::default().into_context();
+    runtime::spawn(context.run());
+
+    for value in 1..10 {
+        let id = actor
+            .add_id(1)
+            .await
+            .expect("Failed to invoke `add_id` on actor");
+        assert_eq!(id, value);
+    }
+}
+
 // =================================================================================
 // Generated from `thespian::actor`
 // =================================================================================
