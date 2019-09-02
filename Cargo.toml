@@ -8,8 +8,6 @@ edition = "2018"
 futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly"] }
 log = "0.4.8"
 thespian-derive = { path = "./thespian-derive" }
-
-[dev-dependencies]
 runtime = "0.3.0-alpha.7"
 
 [workspace]

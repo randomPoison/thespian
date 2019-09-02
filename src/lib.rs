@@ -26,6 +26,20 @@ pub trait Actor: 'static + Sized + Send {
 
         (proxy, context)
     }
+
+    /// Spawns the actor onto the [runtime] threadpool.
+    ///
+    /// Returns the actor handle. Can only be used if the runtime has been initialized.
+    /// If not using [runtime], or if you want more control over how the actor context is
+    /// spawned, use [`into_context`] instead.
+    ///
+    /// [runtime]: https://docs.rs/runtime
+    /// [`into_context`]: #tymethod.into_context
+    fn spawn(self) -> Self::Proxy {
+        let (proxy, context) = self.into_context();
+        runtime::spawn(context.run());
+        proxy
+    }
 }
 
 pub struct Context<A: Actor> {
