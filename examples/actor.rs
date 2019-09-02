@@ -1,43 +1,42 @@
 use runtime::time::*;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use thespian::*;
 
 #[runtime::main]
 async fn main() {
-    // Spawn the actor as a concurrent task.
-    let (mut actor, context) = MyActor::default().into_context();
-    runtime::spawn(context.run());
+    // Spawn the actor as a task on the default runtime. This returns a handle to
+    // the actor that we can use to communicate with it from other tasks.
+    let mut actor = MyActor::default().spawn();
 
-    // Communicate asynchronously with the actor from the current task, transparently
-    // using message passing under the hood.
-    loop {
-        Delay::new(Duration::from_secs(3)).await;
+    // Use the handle to call the `add_count` method. Under the hood, this is using
+    // channels and message passing to communicate between tasks/threads, but
+    // thespian hides those implementation details and provides a simple, await-aware
+    // way to communicate with the actor.
+    for _ in 0..10 {
         let id = actor
-            .add_id(1)
+            .add_count(1)
             .await
             .expect("Failed to invoke `add_id` on actor");
-        println!("New ID: {}", id);
+        println!("New count: {}", id);
     }
 }
 
+// Actors are defined as normal structs.
 #[derive(Debug, Default)]
 pub struct MyActor {
-    name: Arc<String>,
-    id: usize,
+    count: usize,
 }
 
+// To define messages for an actor, mark an impl bloc with the `thespian::actor`
+// attribute. All methods defined in this impl block become messages that can be
+// sent via the generated actor handle.
 #[thespian::actor]
 impl MyActor {
-    pub fn name(&self) -> Arc<String> {
-        self.name.clone()
-    }
-
-    pub fn set_name(&mut self, name: String) {
-        self.name = Arc::new(name);
-    }
-
-    pub async fn add_id(&mut self, value: usize) -> usize {
-        self.id += value;
-        self.id
+    /// Adds to the actor's count, simulating a slow operation such as writing to a
+    /// database.
+    pub async fn add_count(&mut self, value: usize) -> usize {
+        self.count += value;
+        Delay::new(Duration::from_secs(1)).await;
+        self.count
     }
 }
