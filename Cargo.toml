@@ -10,4 +10,10 @@ log = "0.4.8"
 thespian-derive = { path = "./thespian-derive" }
 runtime = "0.3.0-alpha.7"
 
+[build-dependencies]
+skeptic = "0.13"
+
+[dev-dependencies]
+skeptic = "0.13"
+
 [workspace]
