@@ -1,4 +1,5 @@
 use crate::envelope::*;
+use derivative::Derivative;
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
@@ -65,17 +66,10 @@ pub trait ActorProxy: Sized + Clone {
     fn new(inner: ProxyFor<Self::Actor>) -> Self;
 }
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct ProxyFor<A: Actor> {
     sink: mpsc::Sender<Envelope<A>>,
-}
-
-impl<A: Actor> Clone for ProxyFor<A> {
-    fn clone(&self) -> Self {
-        Self {
-            sink: self.sink.clone(),
-        }
-    }
 }
 
 impl<A: Actor> ProxyFor<A> {

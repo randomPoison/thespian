@@ -5,6 +5,7 @@ authors = ["David LeGare <dlegare.1001@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+derivative = "1.0.3"
 futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly"] }
 log = "0.4.8"
 thespian-derive = { path = "./thespian-derive" }
