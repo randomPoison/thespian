@@ -120,20 +120,20 @@ impl ActorMethod {
 
         // Generate the expression for initializing the message object.
         let struct_ident = self.message_struct_ident(actor_ident);
-        let struct_params = self.args.iter().map(|pat| &pat.pat);
+        let struct_params: Punctuated<_, Comma> = self.args.iter().map(|pat| &pat.pat).collect();
 
         let result_type = self.result_type();
 
         quote! {
             #vis async fn #ident(&mut self, #args) -> Result<#result_type, thespian::MessageError> {
-                self.inner.#send_method(#struct_ident(#( #struct_params )*)).await
+                self.inner.#send_method(#struct_ident(#struct_params)).await
             }
         }
     }
 
     fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
         let ident = self.message_struct_ident(actor_ident);
-        let args = self.args.iter().map(|pat| &pat.ty);
+        let args: Punctuated<_, Comma> = self.args.iter().map(|pat| &pat.ty).collect();
         let message_impl = if self.asyncness.is_some() {
             self.impl_async_message(actor_ident)
         } else {
@@ -142,7 +142,7 @@ impl ActorMethod {
 
         quote! {
             #[allow(bad_style)]
-            struct #ident(#( #args )*);
+            struct #ident(#args);
 
             #message_impl
         }
