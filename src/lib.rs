@@ -1,13 +1,15 @@
-use crate::envelope::*;
+use crate::{envelope::*, stage::*};
 use derivative::Derivative;
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
 use log::*;
+use std::sync::{atomic::AtomicU8, Arc};
 
 mod envelope;
 mod message;
+mod stage;
 
 pub use crate::message::*;
 pub use thespian_derive::actor;
@@ -15,17 +17,22 @@ pub use thespian_derive::actor;
 pub trait Actor: 'static + Sized + Send {
     type Proxy: ActorProxy<Actor = Self>;
 
-    fn into_context(self) -> (Self::Proxy, Context<Self>) {
+    fn into_stage(self) -> (Self::Proxy, Stage<Self>) {
         // TODO: Make the channel buffer configurable.
         let (sender, receiver) = mpsc::channel(16);
-        let proxy = Self::Proxy::new(ProxyFor { sink: sender });
+        let remote_inner = Arc::new(RemoteInner::new(ActorState::Built));
+        let proxy = Self::Proxy::new(ProxyFor {
+            sink: sender,
+            proxy_count: Arc::new(()),
+        });
 
-        let context = Context {
+        let stage = Stage {
             actor: self,
+            remote: remote_inner,
             stream: receiver,
         };
 
-        (proxy, context)
+        (proxy, stage)
     }
 
     /// Spawns the actor onto the [runtime] threadpool.
@@ -40,71 +47,6 @@ pub trait Actor: 'static + Sized + Send {
         let (proxy, context) = self.into_context();
         runtime::spawn(context.run());
         proxy
-    }
-}
-
-pub struct Context<A: Actor> {
-    actor: A,
-    stream: mpsc::Receiver<Envelope<A>>,
-}
-
-impl<A: Actor> Context<A> {
-    /// Consumes the context, returning a future tha will run the actor until it is stopped.
-    pub async fn run(mut self) {
-        while let Some(envelope) = self.stream.next().await {
-            match envelope {
-                Envelope::Sync(message) => message.handle(&mut self.actor),
-                Envelope::Async(message) => message.handle(&mut self.actor).await,
-            }
-        }
-    }
-}
-
-pub trait ActorProxy: Sized + Clone {
-    type Actor: Actor<Proxy = Self>;
-
-    fn new(inner: ProxyFor<Self::Actor>) -> Self;
-}
-
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct ProxyFor<A: Actor> {
-    sink: mpsc::Sender<Envelope<A>>,
-}
-
-impl<A: Actor> ProxyFor<A> {
-    pub async fn send_sync<M: SyncMessage<Actor = A>>(
-        &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
-        let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(SyncEnvelope {
-            message,
-            result_sender,
-        });
-        let envelope = Envelope::Sync(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
-    }
-
-    pub async fn send_async<M: AsyncMessage<Actor = A>>(
-        &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
-        let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(AsyncEnvelope {
-            message,
-            result_sender,
-        });
-        let envelope = Envelope::Async(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
     }
 }
 
