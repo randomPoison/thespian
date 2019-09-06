@@ -1,23 +1,72 @@
-use crate::{envelope::*, message::*, Actor, MessageError};
+use crate::{envelope::*, message::*, remote::*, Actor, MessageError};
 use derivative::Derivative;
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
 use log::*;
+use num_derive::{FromPrimitive, ToPrimitive};
 use std::{
     marker::PhantomData,
     sync::{atomic::AtomicU8, Arc},
 };
 
+/// Builder for initializing an actor that needs its own [`Remote`].
+///
+/// In order to stop itself and access its own proxy, an actor uses its [`Remote`].
+/// The remote it created along with the [`Stage`] that runs the actor. This poses
+/// a problem during initialization, though: You need to have created the actor
+/// object in order to initialize the stage, but you need the stage in order to get
+/// the remote needed to initialize the actor. In order to resolve this,
+/// `StageBuilder` provides a way to get a [`Remote`] without having to fully create
+/// a [`Stage`] first.
+///
+/// # Examples
+///
+/// ```
+/// use thespian::{Remote, StageBuilder};
+///
+/// struct MyActor {
+///     remote: Remote<Self>
+/// }
+///
+/// #[thespian::actor]
+/// impl MyActor {}
+///
+/// let (builder, remote) = StageBuilder::new();
+/// let actor = MyActor { remote };
+/// let stage = builder.finish(actor);
+/// ```
+///
+/// [`Remote`]: struct.Remote.html
 pub struct StageBuilder<A: Actor> {
     remote: Arc<RemoteInner>,
+    receiver: mpsc::Receiver<Envelope<A>>,
     _marker: PhantomData<A>,
 }
 
 impl<A: Actor> StageBuilder<A> {
     pub fn new() -> (Self, Remote<A>) {
-        unimplemented!()
+        let remote = Arc::new(RemoteInner::new(ActorState::Building));
+
+        let (sender, receiver) = mpsc::channel(16);
+        let remote_inner = Arc::new(RemoteInner::new(ActorState::Built));
+        let proxy = ProxyFor {
+            sink: sender,
+            proxy_count: Arc::new(()),
+        };
+
+        let builder = Self {
+            remote,
+            receiver,
+            _marker: Default::default(),
+        };
+
+        let remote = Remote {
+            inner: remote,
+            proxy: proxy,
+        };
+        (builder, remote)
     }
 
     pub fn finish(actor: A) -> Stage<A> {
@@ -92,24 +141,6 @@ impl<A: Actor> ProxyFor<A> {
             .map_err::<MessageError, _>(Into::into)?;
         result.await.map_err(Into::into)
     }
-}
-
-/// Remote controller for an actor to manage its own state.
-#[derive(Debug)]
-pub struct Remote<A: Actor> {
-    inner: Arc<RemoteInner>,
-    proxy: ProxyFor<A>,
-}
-
-impl<A: Actor> Remote<A> {
-    pub fn proxy(&self) -> A::Proxy {
-        A::Proxy::new(self.proxy.clone())
-    }
-}
-
-#[derive(Debug)]
-struct RemoteInner {
-    state: AtomicU8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

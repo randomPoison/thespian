@@ -9,6 +9,7 @@ use std::sync::{atomic::AtomicU8, Arc};
 
 mod envelope;
 mod message;
+mod remote;
 mod stage;
 
 pub use crate::message::*;
@@ -19,12 +20,6 @@ pub trait Actor: 'static + Sized + Send {
 
     fn into_stage(self) -> (Self::Proxy, Stage<Self>) {
         // TODO: Make the channel buffer configurable.
-        let (sender, receiver) = mpsc::channel(16);
-        let remote_inner = Arc::new(RemoteInner::new(ActorState::Built));
-        let proxy = Self::Proxy::new(ProxyFor {
-            sink: sender,
-            proxy_count: Arc::new(()),
-        });
 
         let stage = Stage {
             actor: self,
