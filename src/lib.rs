@@ -1,33 +1,21 @@
-use crate::{envelope::*, stage::*};
-use derivative::Derivative;
-use futures::{
-    channel::{mpsc, oneshot},
-    prelude::*,
-};
+use crate::stage::*;
+use futures::channel::{mpsc, oneshot};
 use log::*;
-use std::sync::{atomic::AtomicU8, Arc};
 
 mod envelope;
 mod message;
 mod remote;
 mod stage;
 
-pub use crate::message::*;
+pub use crate::{message::*, remote::Remote};
 pub use thespian_derive::actor;
 
 pub trait Actor: 'static + Sized + Send {
     type Proxy: ActorProxy<Actor = Self>;
 
-    fn into_stage(self) -> (Self::Proxy, Stage<Self>) {
-        // TODO: Make the channel buffer configurable.
-
-        let stage = Stage {
-            actor: self,
-            remote: remote_inner,
-            stream: receiver,
-        };
-
-        (proxy, stage)
+    fn into_stage(self) -> Stage<Self> {
+        let (builder, _) = StageBuilder::new();
+        builder.finish(self)
     }
 
     /// Spawns the actor onto the [runtime] threadpool.
@@ -39,8 +27,9 @@ pub trait Actor: 'static + Sized + Send {
     /// [runtime]: https://docs.rs/runtime
     /// [`into_context`]: #tymethod.into_context
     fn spawn(self) -> Self::Proxy {
-        let (proxy, context) = self.into_context();
-        runtime::spawn(context.run());
+        let stage = self.into_stage();
+        let proxy = stage.proxy();
+        runtime::spawn(stage.run());
         proxy
     }
 }

@@ -4,12 +4,8 @@ use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
-use log::*;
-use num_derive::{FromPrimitive, ToPrimitive};
-use std::{
-    marker::PhantomData,
-    sync::{atomic::AtomicU8, Arc},
-};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::{marker::PhantomData, sync::Arc};
 
 /// Builder for initializing an actor that needs its own [`Remote`].
 ///
@@ -42,6 +38,7 @@ use std::{
 pub struct StageBuilder<A: Actor> {
     remote: Arc<RemoteInner>,
     receiver: mpsc::Receiver<Envelope<A>>,
+    proxy: ProxyFor<A>,
     _marker: PhantomData<A>,
 }
 
@@ -50,15 +47,15 @@ impl<A: Actor> StageBuilder<A> {
         let remote = Arc::new(RemoteInner::new(ActorState::Building));
 
         let (sender, receiver) = mpsc::channel(16);
-        let remote_inner = Arc::new(RemoteInner::new(ActorState::Built));
         let proxy = ProxyFor {
             sink: sender,
             proxy_count: Arc::new(()),
         };
 
         let builder = Self {
-            remote,
+            remote: remote.clone(),
             receiver,
+            proxy: proxy.clone(),
             _marker: Default::default(),
         };
 
@@ -69,14 +66,20 @@ impl<A: Actor> StageBuilder<A> {
         (builder, remote)
     }
 
-    pub fn finish(actor: A) -> Stage<A> {
-        unimplemented!()
+    pub fn finish(self, actor: A) -> Stage<A> {
+        Stage {
+            actor,
+            stream: self.receiver,
+            proxy: self.proxy,
+            remote: self.remote,
+        }
     }
 }
 
 pub struct Stage<A: Actor> {
     actor: A,
     stream: mpsc::Receiver<Envelope<A>>,
+    proxy: ProxyFor<A>,
 
     /// Share a reference to the `RemoteInner` so that we can check the state.
     remote: Arc<RemoteInner>,
@@ -85,12 +88,40 @@ pub struct Stage<A: Actor> {
 impl<A: Actor> Stage<A> {
     /// Consumes the stage, returning a future tha will run the actor until it is stopped.
     pub async fn run(mut self) {
+        // Mark that the actor is running.
+        //
+        // TODO: Do we have to do anything here to handle the case where the actor has
+        // already been asked to stop? Is that a valid case, or would we reject any stop
+        // requests that come in before the actor has started running?
+        self.remote.set_state(ActorState::Running);
+
         while let Some(envelope) = self.stream.next().await {
             match envelope {
                 Envelope::Sync(message) => message.handle(&mut self.actor),
                 Envelope::Async(message) => message.handle(&mut self.actor).await,
+                Envelope::Stop => {
+                    self.remote.set_state(ActorState::Stopping);
+                    break;
+                }
+            }
+
+            // Check if the actor has stopped itself after each message we process.
+            //
+            // TODO: Do we need to be able to stop the actor while still waiting for a message?
+            // It's technically valid currently for the actor to hand off its remote to another
+            // task/thread that could stop the actor at an arbitrary time, though doing so is
+            // not the intended use case.
+            if self.remote.state() == ActorState::Stopping {
+                break;
             }
         }
+
+        // Mark that the actor has fully stopped.
+        self.remote.set_state(ActorState::Stopped);
+    }
+
+    pub fn proxy(&self) -> A::Proxy {
+        A::Proxy::new(self.proxy.clone())
     }
 }
 
@@ -141,9 +172,16 @@ impl<A: Actor> ProxyFor<A> {
             .map_err::<MessageError, _>(Into::into)?;
         result.await.map_err(Into::into)
     }
+
+    pub async fn stop(&mut self) -> Result<(), MessageError> {
+        self.sink
+            .send(Envelope::Stop)
+            .await
+            .map_err::<MessageError, _>(Into::into)
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum ActorState {
     Building,
