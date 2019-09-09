@@ -1,5 +1,6 @@
 use crate::{
-    stage::{ActorState, ProxyFor},
+    proxy::{ProxyFor, WeakProxyFor},
+    stage::ActorState,
     Actor, ActorProxy,
 };
 use std::{
@@ -13,13 +14,31 @@ use std::{
 /// Remote controller for an actor to manage its own state.
 #[derive(Debug)]
 pub struct Remote<A: Actor> {
-    pub(crate) inner: Arc<RemoteInner>,
-    pub(crate) proxy: ProxyFor<A>,
+    inner: Arc<RemoteInner>,
+    proxy: WeakProxyFor<A>,
 }
 
 impl<A: Actor> Remote<A> {
+    pub(crate) fn new(inner: Arc<RemoteInner>, proxy: &ProxyFor<A>) -> Self {
+        Self {
+            inner,
+            proxy: proxy.downgrade(),
+        }
+    }
+
+    /// Returns a proxy to the actor for this remote.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the actor is no longer running and all other proxies
+    /// for the actor have been dropped. A `Remote` should not outlive the actor it is
+    /// tied to, so this is not a supported use case.
     pub fn proxy(&self) -> A::Proxy {
-        A::Proxy::new(self.proxy.clone())
+        let proxy = self
+            .proxy
+            .upgrade()
+            .expect("Unable to get proxy from actor remote, did your `Remote` outlive your actor?");
+        A::Proxy::new(proxy)
     }
 
     pub fn stop(&self) -> Result<(), StopError> {

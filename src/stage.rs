@@ -1,9 +1,5 @@
-use crate::{envelope::*, message::*, remote::*, Actor, MessageError};
-use derivative::Derivative;
-use futures::{
-    channel::{mpsc, oneshot},
-    prelude::*,
-};
+use crate::{envelope::*, proxy::*, remote::*, Actor};
+use futures::{channel::mpsc, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::{marker::PhantomData, sync::Arc};
 
@@ -44,25 +40,20 @@ pub struct StageBuilder<A: Actor> {
 
 impl<A: Actor> StageBuilder<A> {
     pub fn new() -> (Self, Remote<A>) {
-        let remote = Arc::new(RemoteInner::new(ActorState::Building));
+        let remote_inner = Arc::new(RemoteInner::new(ActorState::Building));
 
         let (sender, receiver) = mpsc::channel(16);
-        let proxy = ProxyFor {
-            sink: sender,
-            proxy_count: Arc::new(()),
-        };
+        let proxy = ProxyFor::new(sender);
+
+        let remote = Remote::new(remote_inner.clone(), &proxy);
 
         let builder = Self {
-            remote: remote.clone(),
+            remote: remote_inner,
             receiver,
             proxy: proxy.clone(),
             _marker: Default::default(),
         };
 
-        let remote = Remote {
-            inner: remote,
-            proxy: proxy,
-        };
         (builder, remote)
     }
 
@@ -79,6 +70,15 @@ impl<A: Actor> StageBuilder<A> {
 pub struct Stage<A: Actor> {
     actor: A,
     stream: mpsc::Receiver<Envelope<A>>,
+
+    // Hold onto a proxy for the actor.
+    //
+    // NOTE: We can't hold a `WeakProxyFor<A>` here because that would mean that, once
+    // all externally-held proxies had been dropped, there would be no way to construct
+    // a new proxy for the actor, since the inner proxy count has been dropped. Since
+    // the remote only holds a weak reference to the proxy count, this also ensures that
+    // a new proxy can't be created once the actor has been stopped and the stage has
+    // been dropped.
     proxy: ProxyFor<A>,
 
     /// Share a reference to the `RemoteInner` so that we can check the state.
@@ -95,14 +95,26 @@ impl<A: Actor> Stage<A> {
         // requests that come in before the actor has started running?
         self.remote.set_state(ActorState::Running);
 
+        // TODO: What would it mean for `stream.next()` to return `None` here? Since the stage
+        // holds onto a copy of the proxy, that case should never happen right?
         while let Some(envelope) = self.stream.next().await {
             match envelope {
                 Envelope::Sync(message) => message.handle(&mut self.actor),
                 Envelope::Async(message) => message.handle(&mut self.actor).await,
+
+                // Force the state to `Stopping` and immedately stop processing messages.
+                //
+                // TODO: Is this the right thing to do here? Should the actor finish processing
+                // messages by default? Should we have a different way to kill the actor
+                // immediately? Do we need to flush any pending messages?
                 Envelope::Stop => {
                     self.remote.set_state(ActorState::Stopping);
                     break;
                 }
+
+                // NOTE: We don't need to do anything in the case that a proxy was dropped, since
+                // we check the proxy count at the end of the loop body.
+                Envelope::ProxyDropped => {}
             }
 
             // Check if the actor has stopped itself after each message we process.
@@ -114,7 +126,20 @@ impl<A: Actor> Stage<A> {
             if self.remote.state() == ActorState::Stopping {
                 break;
             }
+
+            // Check if there are any proxies held by other tasks. As long as the actor is running
+            // there will be at least one proxy, since the stage holds onto one itself. If the
+            // count drops to one, that means no other tasks are holding onto proxies and we
+            // therefore cannot receive any new messages.
+            //
+            // TODO: Make sure we've processed any messages we have already received before we
+            // break out of the loop.
+            if self.proxy.count() == 1 {
+                break;
+            }
         }
+
+        // TODO: Give the actor a chance to restart itself before stopping it fully.
 
         // Mark that the actor has fully stopped.
         self.remote.set_state(ActorState::Stopped);
@@ -122,62 +147,6 @@ impl<A: Actor> Stage<A> {
 
     pub fn proxy(&self) -> A::Proxy {
         A::Proxy::new(self.proxy.clone())
-    }
-}
-
-pub trait ActorProxy: Sized + Clone {
-    type Actor: Actor<Proxy = Self>;
-
-    fn new(inner: ProxyFor<Self::Actor>) -> Self;
-}
-
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct ProxyFor<A: Actor> {
-    sink: mpsc::Sender<Envelope<A>>,
-    proxy_count: Arc<()>,
-}
-
-impl<A: Actor> ProxyFor<A> {
-    pub async fn send_sync<M: SyncMessage<Actor = A>>(
-        &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
-        let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(SyncEnvelope {
-            message,
-            result_sender,
-        });
-        let envelope = Envelope::Sync(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
-    }
-
-    pub async fn send_async<M: AsyncMessage<Actor = A>>(
-        &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
-        let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(AsyncEnvelope {
-            message,
-            result_sender,
-        });
-        let envelope = Envelope::Async(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
-    }
-
-    pub async fn stop(&mut self) -> Result<(), MessageError> {
-        self.sink
-            .send(Envelope::Stop)
-            .await
-            .map_err::<MessageError, _>(Into::into)
     }
 }
 

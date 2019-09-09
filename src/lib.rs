@@ -4,10 +4,11 @@ use log::*;
 
 mod envelope;
 mod message;
+mod proxy;
 mod remote;
 mod stage;
 
-pub use crate::{message::*, remote::Remote};
+pub use crate::{message::*, proxy::*, remote::Remote};
 pub use thespian_derive::actor;
 
 pub trait Actor: 'static + Sized + Send {

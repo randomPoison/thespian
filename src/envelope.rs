@@ -15,6 +15,7 @@ pub(crate) enum Envelope<A: Actor> {
     Sync(Box<dyn SyncErasedMessage<A>>),
     Async(Box<dyn AsyncErasedMessage<A>>),
     Stop,
+    ProxyDropped,
 }
 
 impl<A: Actor> fmt::Debug for Envelope<A> {
@@ -23,6 +24,7 @@ impl<A: Actor> fmt::Debug for Envelope<A> {
             Envelope::Sync(..) => write!(f, "Envelope::Sync"),
             Envelope::Async(..) => write!(f, "Envelope::Async"),
             Envelope::Stop => write!(f, "Envelope::Stop"),
+            Envelope::ProxyDropped => write!(f, "Envelope::ProxyDropped"),
         }
     }
 }
