@@ -42,7 +42,30 @@ impl<A: Actor> Remote<A> {
     }
 
     pub fn stop(&self) -> Result<(), StopError> {
-        unimplemented!()
+        loop {
+            let state = self.inner.state();
+            match state {
+                ActorState::Running => {
+                    let result = self.inner.state.compare_and_swap(
+                        state.into(),
+                        ActorState::Stopping.into(),
+                        Ordering::SeqCst,
+                    );
+
+                    if result != ActorState::Stopping.into() {
+                        continue;
+                    }
+                }
+
+                ActorState::Building | ActorState::Built => {
+                    return Err(StopError);
+                }
+
+                ActorState::Stopping | ActorState::Stopped => {
+                    return Ok(());
+                }
+            }
+        }
     }
 
     pub fn state(&self) -> ActorState {
@@ -67,7 +90,7 @@ impl RemoteInner {
 
     pub(crate) fn set_state(&self, state: ActorState) -> ActorState {
         self.state
-            .swap(state as u8, Ordering::SeqCst)
+            .swap(state.into(), Ordering::SeqCst)
             .try_into()
             .expect("Failed to convert raw actor state")
     }
