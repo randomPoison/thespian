@@ -18,7 +18,7 @@ use std::{marker::PhantomData, sync::Arc};
 /// ```
 /// use thespian::{Remote, StageBuilder};
 ///
-/// struct MyActor {
+/// pub struct MyActor {
 ///     remote: Remote<Self>
 /// }
 ///
@@ -102,12 +102,6 @@ impl<A: Actor> Stage<A> {
                 Envelope::Sync(message) => message.handle(&mut self.actor),
                 Envelope::Async(message) => message.handle(&mut self.actor).await,
 
-                // Force the state to `Stopping` and immedately stop processing messages.
-                Envelope::Stop => {
-                    self.remote.set_state(ActorState::Stopping);
-                    break;
-                }
-
                 // NOTE: We don't need to do anything in the case that a proxy was dropped, since
                 // we check the proxy count at the end of the loop body.
                 Envelope::ProxyDropped => {}
@@ -140,10 +134,7 @@ impl<A: Actor> Stage<A> {
             match envelope {
                 Envelope::Sync(message) => message.handle(&mut self.actor),
                 Envelope::Async(message) => message.handle(&mut self.actor).await,
-
-                // NOTE: At this point we don't need to do anything for the `Stop` message, since
-                // the actor is already stopping.
-                Envelope::Stop | Envelope::ProxyDropped => {}
+                Envelope::ProxyDropped => {}
             }
         }
 

@@ -72,13 +72,6 @@ impl<A: Actor> ProxyFor<A> {
         result.await.map_err(Into::into)
     }
 
-    pub async fn stop(&mut self) -> Result<(), MessageError> {
-        self.sink
-            .send(Envelope::Stop)
-            .await
-            .map_err::<MessageError, _>(Into::into)
-    }
-
     pub(crate) fn count(&self) -> usize {
         Arc::strong_count(self.proxy_count.as_ref().unwrap())
     }
