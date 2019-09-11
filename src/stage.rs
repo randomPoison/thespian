@@ -60,7 +60,7 @@ impl<A: Actor> StageBuilder<A> {
     pub fn finish(self, actor: A) -> Stage<A> {
         Stage {
             actor,
-            stream: self.receiver,
+            receiver: self.receiver,
             proxy: self.proxy,
             remote: self.remote,
         }
@@ -69,7 +69,7 @@ impl<A: Actor> StageBuilder<A> {
 
 pub struct Stage<A: Actor> {
     actor: A,
-    stream: mpsc::Receiver<Envelope<A>>,
+    receiver: mpsc::Receiver<Envelope<A>>,
 
     // Hold onto a proxy for the actor.
     //
@@ -97,16 +97,12 @@ impl<A: Actor> Stage<A> {
 
         // TODO: What would it mean for `stream.next()` to return `None` here? Since the stage
         // holds onto a copy of the proxy, that case should never happen right?
-        while let Some(envelope) = self.stream.next().await {
+        while let Some(envelope) = self.receiver.next().await {
             match envelope {
                 Envelope::Sync(message) => message.handle(&mut self.actor),
                 Envelope::Async(message) => message.handle(&mut self.actor).await,
 
                 // Force the state to `Stopping` and immedately stop processing messages.
-                //
-                // TODO: Is this the right thing to do here? Should the actor finish processing
-                // messages by default? Should we have a different way to kill the actor
-                // immediately? Do we need to flush any pending messages?
                 Envelope::Stop => {
                     self.remote.set_state(ActorState::Stopping);
                     break;
@@ -131,15 +127,25 @@ impl<A: Actor> Stage<A> {
             // there will be at least one proxy, since the stage holds onto one itself. If the
             // count drops to one, that means no other tasks are holding onto proxies and we
             // therefore cannot receive any new messages.
-            //
-            // TODO: Make sure we've processed any messages we have already received before we
-            // break out of the loop.
             if self.proxy.count() == 1 {
                 break;
             }
         }
 
-        // TODO: Give the actor a chance to restart itself before stopping it fully.
+        // Close the channel so that no new messages can be sent.
+        self.receiver.close();
+
+        // Process any remaining messages.
+        while let Some(envelope) = self.receiver.next().await {
+            match envelope {
+                Envelope::Sync(message) => message.handle(&mut self.actor),
+                Envelope::Async(message) => message.handle(&mut self.actor).await,
+
+                // NOTE: At this point we don't need to do anything for the `Stop` message, since
+                // the actor is already stopping.
+                Envelope::Stop | Envelope::ProxyDropped => {}
+            }
+        }
 
         // Mark that the actor has fully stopped.
         self.remote.set_state(ActorState::Stopped);
