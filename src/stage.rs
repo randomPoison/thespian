@@ -66,7 +66,7 @@ impl<A: Actor> StageBuilder<A> {
         }
     }
 
-    pub fn spawn(self, actor: A) -> Proxy<A> {
+    pub fn spawn(self, actor: A) -> A::Proxy {
         let stage = self.finish(actor);
         let proxy = stage.proxy();
         runtime::spawn(stage.run());
