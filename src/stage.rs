@@ -65,6 +65,13 @@ impl<A: Actor> StageBuilder<A> {
             remote: self.remote,
         }
     }
+
+    pub fn spawn(self, actor: A) -> Proxy<A> {
+        let stage = self.finish(actor);
+        let proxy = stage.proxy();
+        runtime::spawn(stage.run());
+        proxy
+    }
 }
 
 pub struct Stage<A: Actor> {
