@@ -16,8 +16,9 @@ use std::{marker::PhantomData, sync::Arc};
 /// # Examples
 ///
 /// ```
-/// use thespian::{Remote, StageBuilder};
+/// use thespian::{Actor, Remote, StageBuilder};
 ///
+/// #[derive(Actor)]
 /// pub struct MyActor {
 ///     remote: Remote<Self>
 /// }

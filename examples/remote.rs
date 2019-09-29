@@ -24,7 +24,7 @@ async fn main() {
 }
 
 // Actors are defined as normal structs.
-#[derive(Debug)]
+#[derive(Debug, Actor)]
 pub struct MyActor {
     remote: Remote<Self>,
     count: usize,

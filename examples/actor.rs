@@ -22,7 +22,7 @@ async fn main() {
 }
 
 // Actors are defined as normal structs.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Actor)]
 pub struct MyActor {
     count: usize,
 }
