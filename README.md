@@ -11,7 +11,7 @@ use runtime::time::*;
 use std::time::Duration;
 use thespian::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Actor)]
 pub struct MyActor {
     count: usize,
 }
