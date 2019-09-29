@@ -15,8 +15,7 @@ impl MyActor {
 
 #[runtime::test]
 async fn test_actor_impl() {
-    let (mut actor, context) = MyActor::default().into_context();
-    runtime::spawn(context.run());
+    let mut actor = MyActor::default().spawn();
 
     for value in 1..10 {
         let id = actor

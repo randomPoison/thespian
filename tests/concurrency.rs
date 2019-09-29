@@ -24,8 +24,7 @@ impl MyActor {
 #[runtime::test]
 async fn multiple_tasks() {
     // Spawn the actor as a concurrent task.
-    let (mut actor, context) = MyActor::default().into_context();
-    runtime::spawn(context.run());
+    let mut actor = MyActor::default().spawn();
 
     // Spawn 10 tasks, each of which will add 10 to the actor's value.
     let mut tasks = Vec::new();

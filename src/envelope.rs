@@ -14,13 +14,15 @@ use std::fmt;
 pub(crate) enum Envelope<A: Actor> {
     Sync(Box<dyn SyncErasedMessage<A>>),
     Async(Box<dyn AsyncErasedMessage<A>>),
+    ProxyDropped,
 }
 
 impl<A: Actor> fmt::Debug for Envelope<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Envelope::Sync(..) => write!(f, "Envelope::Sync"),
-            Envelope::Async(..) => write!(f, "Evenlope::Async"),
+            Envelope::Async(..) => write!(f, "Envelope::Async"),
+            Envelope::ProxyDropped => write!(f, "Envelope::ProxyDropped"),
         }
     }
 }
