@@ -20,3 +20,22 @@ impl MyActor {
         unimplemented!()
     }
 }
+
+// Test that the derive works with a second impl block.
+#[thespian::actor]
+impl MyActor {
+    pub fn do_thing(&self) {
+        unimplemented!()
+    }
+}
+
+mod submodule {
+    use super::{MyActor, MyActorProxy};
+
+    #[thespian::actor]
+    impl MyActor {
+        pub fn another_thing(&self) {
+            unimplemented!()
+        }
+    }
+}
