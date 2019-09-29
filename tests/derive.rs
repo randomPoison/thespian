@@ -1,3 +1,6 @@
+use thespian::Actor;
+
+#[derive(Debug, Actor)]
 pub struct MyActor {
     id: usize,
 }

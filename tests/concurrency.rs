@@ -1,7 +1,7 @@
 use futures::future;
 use thespian::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Actor)]
 pub struct MyActor {
     id: usize,
 }

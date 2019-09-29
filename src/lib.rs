@@ -8,7 +8,7 @@ mod remote;
 mod stage;
 
 pub use crate::{message::*, proxy::*, remote::*, stage::*};
-pub use thespian_derive::actor;
+pub use thespian_derive::*;
 
 pub trait Actor: 'static + Sized + Send {
     type Proxy: ActorProxy<Actor = Self>;

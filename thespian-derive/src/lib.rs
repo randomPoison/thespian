@@ -9,6 +9,36 @@ use syn::{
     *,
 };
 
+#[proc_macro_derive(Actor)]
+pub fn derive_actor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let vis = input.vis;
+    let actor_ident = input.ident;
+    let proxy_ident = format_ident!("{}Proxy", actor_ident);
+
+    let generated = quote! {
+        impl thespian::Actor for #actor_ident {
+            type Proxy = #proxy_ident;
+        }
+
+        #[derive(Debug, Clone)]
+        #vis struct #proxy_ident {
+            inner: thespian::ProxyFor<#actor_ident>,
+        }
+
+        impl thespian::ActorProxy for #proxy_ident {
+            type Actor = #actor_ident;
+
+            fn new(inner: thespian::ProxyFor<#actor_ident>) -> Self {
+                Self { inner }
+            }
+        }
+    };
+
+    generated.into()
+}
+
 #[proc_macro_attribute]
 pub fn actor(
     _args: proc_macro::TokenStream,
@@ -31,23 +61,6 @@ pub fn actor(
         .map(|method| method.quote_message_struct(&actor_ident));
 
     let generated = quote! {
-        impl thespian::Actor for #actor_ident {
-            type Proxy = #proxy_ident;
-        }
-
-        #[derive(Debug, Clone)]
-        pub struct #proxy_ident {
-            inner: thespian::ProxyFor<#actor_ident>,
-        }
-
-        impl thespian::ActorProxy for #proxy_ident {
-            type Actor = #actor_ident;
-
-            fn new(inner: thespian::ProxyFor<#actor_ident>) -> Self {
-                Self { inner }
-            }
-        }
-
         impl #proxy_ident {
             #( #proxy_methods )*
         }
