@@ -24,6 +24,10 @@ impl MyActor {
         some_param.push_str(" and some more stuff");
         some_param
     }
+
+    pub fn pat_param_tuple(&self, (foo, bar): (usize, String)) {
+        dbg!(foo, bar);
+    }
 }
 
 // Test that the derive works with a second impl block.

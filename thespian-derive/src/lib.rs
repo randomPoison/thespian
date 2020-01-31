@@ -4,7 +4,6 @@ use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    spanned::Spanned,
     token::{Async, Comma},
     *,
 };
@@ -108,7 +107,7 @@ struct ActorMethod {
     asyncness: Option<Async>,
     ident: Ident,
     receiver: Receiver,
-    args: Punctuated<PatType, Comma>,
+    args: Vec<(Ident, Box<Type>)>,
     output: ReturnType,
 }
 
@@ -121,7 +120,11 @@ impl ActorMethod {
         // the user might have used a pattern for one of the parameters instead of
         // binding it to a variable name. In these cases, we need to generate an
         // alternate variable name to use instead.
-        let args = &self.args;
+        let args: Punctuated<_, Comma> = self
+            .args
+            .iter()
+            .map(|(ident, ty)| quote! { #ident: #ty })
+            .collect();
 
         // Determine which send method on `ProxyFor<A>` should be used to send the method
         // based on whether or not the message handler is async.
@@ -133,7 +136,8 @@ impl ActorMethod {
 
         // Generate the expression for initializing the message object.
         let struct_ident = self.message_struct_ident(actor_ident);
-        let struct_params: Punctuated<_, Comma> = self.args.iter().map(|pat| &pat.pat).collect();
+        let struct_params: Punctuated<_, Comma> =
+            self.args.iter().map(|(ident, _)| ident).collect();
 
         let result_type = self.result_type();
 
@@ -146,7 +150,7 @@ impl ActorMethod {
 
     fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
         let ident = self.message_struct_ident(actor_ident);
-        let args: Punctuated<_, Comma> = self.args.iter().map(|pat| &pat.ty).collect();
+        let args: Punctuated<_, Comma> = self.args.iter().map(|(_, ty)| ty).collect();
         let message_impl = if self.asyncness.is_some() {
             self.impl_async_message(actor_ident)
         } else {
@@ -165,11 +169,7 @@ impl ActorMethod {
         let method_ident = &self.ident;
         let struct_ident = self.message_struct_ident(actor_ident);
         let result_type = self.result_type();
-        let forward_params = self
-            .args
-            .iter()
-            .enumerate()
-            .map(|(index, pat)| LitInt::new(&format!("{}", index), pat.span()));
+        let forward_params = self.args.iter().enumerate().map(|(index, _)| index);
 
         quote! {
             impl thespian::SyncMessage for #struct_ident {
@@ -187,11 +187,7 @@ impl ActorMethod {
         let method_ident = &self.ident;
         let struct_ident = self.message_struct_ident(actor_ident);
         let result_type = self.result_type();
-        let forward_params = self
-            .args
-            .iter()
-            .enumerate()
-            .map(|(index, pat)| LitInt::new(&format!("{}", index), pat.span()));
+        let forward_params = self.args.iter().enumerate().map(|(index, _)| index);
 
         quote! {
             impl thespian::AsyncMessage for #struct_ident {
@@ -230,16 +226,31 @@ impl Parse for ActorMethod {
         let raw_args: Punctuated<FnArg, Comma> = content.parse_terminated(FnArg::parse)?;
 
         let mut receiver = None;
-        let mut args = Punctuated::new();
-        for arg in raw_args {
+        let mut args = Vec::new();
+        for (index, arg) in raw_args.into_iter().enumerate() {
             match arg {
                 FnArg::Receiver(recv) => {
                     // TODO: Validate that reciever is `&self` or `&mut self`.
                     receiver = Some(recv);
                 }
 
-                FnArg::Typed(arg) => {
-                    args.push(arg);
+                FnArg::Typed(PatType { pat, ty, .. }) => {
+                    let ident = match *pat {
+                        // If the function has a regular-ass ident for the parameter, reuse that
+                        // ident in the generated function so that the parameter names in the
+                        // generated code still make sense.
+                        Pat::Ident(PatIdent { ident, .. }) => ident,
+
+                        // If the parameter doesn't have an ident, generate one to use in the
+                        // generated function.
+                        //
+                        // TODO: Can we detect and handle conflicts with existing argument names? It
+                        // shouldn't happen, since we're generating non-standard identifiers, but if
+                        // we can be robust against that case we may as well be.
+                        _ => format_ident!("__arg{}", index),
+                    };
+
+                    args.push((ident, ty));
                 }
             }
         }
