@@ -1,3 +1,5 @@
+#![allow(clippy::blacklisted_name)]
+
 use thespian::Actor;
 
 #[derive(Debug, Actor)]

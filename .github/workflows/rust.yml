@@ -9,11 +9,28 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+
     - name: Install Components
       run: rustup component add rustfmt
+
     - name: Build
       run: cargo build --verbose
+
     - name: Run tests
       run: |
         cargo test --verbose
         cargo fmt -- --check
+
+    - name: Clippy lints
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-targets --all-features -- -D warnings
+
+    - name: Check formatting
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
+      env:
+        SPATIAL_LIB_DIR: "dependencies"
