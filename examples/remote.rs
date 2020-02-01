@@ -10,6 +10,8 @@ async fn main() {
     let mut actor = stage.proxy();
     runtime::spawn(stage.run());
 
+    let unused = "oh no";
+
     // Use the handle to call the `add_count` method. Under the hood, this is using
     // channels and message passing to communicate between tasks/threads, but
     // thespian hides those implementation details and provides a simple, await-aware
