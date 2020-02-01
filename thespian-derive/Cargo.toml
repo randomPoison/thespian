@@ -8,6 +8,6 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-proc-macro2-next = "1.0.0-rc4"
-syn-next = { version = "1.0.0-rc4", features = ["full", "extra-traits"] }
-quote-next = "1.0.0-rc3"
+proc-macro2 = "1.0.8"
+syn = { version = "1.0.14", features = ["full", "extra-traits"] }
+quote = "1.0.2"
