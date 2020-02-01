@@ -169,7 +169,12 @@ impl ActorMethod {
         let method_ident = &self.ident;
         let struct_ident = self.message_struct_ident(actor_ident);
         let result_type = self.result_type();
-        let forward_params = self.args.iter().enumerate().map(|(index, _)| index);
+        let forward_params = self
+            .args
+            .iter()
+            .enumerate()
+            .map(|(index, _)| index)
+            .map(Index::from);
 
         quote! {
             impl thespian::SyncMessage for #struct_ident {
@@ -187,7 +192,12 @@ impl ActorMethod {
         let method_ident = &self.ident;
         let struct_ident = self.message_struct_ident(actor_ident);
         let result_type = self.result_type();
-        let forward_params = self.args.iter().enumerate().map(|(index, _)| index);
+        let forward_params = self
+            .args
+            .iter()
+            .enumerate()
+            .map(|(index, _)| index)
+            .map(Index::from);
 
         quote! {
             impl thespian::AsyncMessage for #struct_ident {
@@ -230,7 +240,7 @@ impl Parse for ActorMethod {
         for (index, arg) in raw_args.into_iter().enumerate() {
             match arg {
                 FnArg::Receiver(recv) => {
-                    // TODO: Validate that reciever is `&self` or `&mut self`.
+                    // TODO: Validate that receiver is `&self` or `&mut self`.
                     receiver = Some(recv);
                 }
 
