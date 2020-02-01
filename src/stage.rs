@@ -51,7 +51,7 @@ impl<A: Actor> StageBuilder<A> {
         let builder = Self {
             remote: remote_inner,
             receiver,
-            proxy: proxy.clone(),
+            proxy,
             _marker: Default::default(),
         };
 
