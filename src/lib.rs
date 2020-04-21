@@ -1,5 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use log::*;
+use thiserror::Error;
 
 mod envelope;
 mod message;
@@ -18,7 +19,7 @@ pub trait Actor: 'static + Sized + Send {
         builder.finish(self)
     }
 
-    /// Spawns the actor onto the [runtime] threadpool.
+    /// Spawns the actor onto the [runtime] thread pool.
     ///
     /// Returns the actor handle. Can only be used if the runtime has been initialized.
     /// If not using [runtime], or if you want more control over how the actor context is
@@ -34,7 +35,8 @@ pub trait Actor: 'static + Sized + Send {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Error)]
+#[error("{cause}")]
 pub struct MessageError {
     cause: MessageErrorCause,
 }
@@ -62,8 +64,15 @@ impl From<mpsc::SendError> for MessageError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Error)]
+#[non_exhaustive]
 pub enum MessageErrorCause {
+    #[error("Message box was full")]
     MailboxFull,
+
+    #[error("Actor was stopped")]
     ActorStopped,
+
+    #[error("Unknown reason for message error")]
+    Unknown,
 }
