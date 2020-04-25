@@ -13,19 +13,22 @@ jobs:
     - name: Install Components
       run: rustup component add rustfmt
 
-    - name: Build
+    - name: Build (no features)
       run: cargo build --verbose
 
-    - name: Run tests
+    - name: Build (async-std)
+      run: cargo build --verbose --features async-std
+
+    - name: Run tests (tokio)
       run: |
-        cargo test --verbose
+        cargo test --verbose --features tokio
         cargo fmt -- --check
 
     - name: Clippy lints
       uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-targets --all-features -- -D warnings
+        args: --all-targets --features tokio -- -D warnings
 
     - name: Check formatting
       uses: actions-rs/cargo@v1
