@@ -21,10 +21,6 @@ tokio = { version = "0.2.19", features = ["full"] }
 
 [workspace]
 
-[[test]]
-name = "concurrency"
-required-features = ["tokio"]
-
 [[example]]
 name = "actor"
 required-features = ["tokio"]

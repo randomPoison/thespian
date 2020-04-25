@@ -1,3 +1,5 @@
+#![cfg(feature = "tokio")]
+
 use futures::future;
 use thespian::*;
 
