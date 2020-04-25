@@ -1,14 +1,14 @@
-use runtime::time::*;
 use std::time::Duration;
 use thespian::*;
+use tokio::time;
 
-#[runtime::main]
+#[tokio::main]
 async fn main() {
     let (builder, remote) = StageBuilder::new();
     let actor = MyActor { remote, count: 0 };
     let stage = builder.finish(actor);
     let mut actor = stage.proxy();
-    runtime::spawn(stage.run());
+    tokio::spawn(stage.run());
 
     // Use the handle to call the `add_count` method. Under the hood, this is using
     // channels and message passing to communicate between tasks/threads, but
@@ -38,7 +38,7 @@ impl MyActor {
     /// Adds to the actor's count, simulating a slow operation such as writing to a
     /// database.
     pub async fn add_count(&mut self, value: usize) -> usize {
-        Delay::new(Duration::from_secs(1)).await;
+        time::delay_for(Duration::from_secs(1)).await;
         self.count += value;
 
         if self.count >= 10 {

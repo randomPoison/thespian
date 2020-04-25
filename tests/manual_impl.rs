@@ -13,7 +13,8 @@ impl MyActor {
     }
 }
 
-#[runtime::test]
+#[cfg(feature = "tokio")]
+#[tokio::test]
 async fn test_actor_impl() {
     let mut actor = MyActor::default().spawn();
 

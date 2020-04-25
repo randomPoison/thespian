@@ -21,7 +21,7 @@ impl MyActor {
 // Test having multiple tasks communicate with an actor concurrently. This uses the
 // default runtime implementation, which is a threadpool, so it also tests threading
 // support.
-#[runtime::test]
+#[tokio::test]
 async fn multiple_tasks() {
     // Spawn the actor as a concurrent task.
     let mut actor = MyActor::default().spawn();
@@ -30,7 +30,7 @@ async fn multiple_tasks() {
     let mut tasks = Vec::new();
     for _ in 0..10 {
         let mut actor = actor.clone();
-        let join_handle = runtime::spawn(async move {
+        let join_handle = tokio::spawn(async move {
             for _ in 0..10 {
                 actor
                     .add_id(1)

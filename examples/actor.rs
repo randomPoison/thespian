@@ -1,8 +1,8 @@
-use runtime::time::*;
 use std::time::Duration;
 use thespian::*;
+use tokio::time;
 
-#[runtime::main]
+#[tokio::main]
 async fn main() {
     // Spawn the actor as a task on the default runtime. This returns a handle to
     // the actor that we can use to communicate with it from other tasks.
@@ -36,7 +36,7 @@ impl MyActor {
     /// database.
     pub async fn add_count(&mut self, value: usize) -> usize {
         self.count += value;
-        Delay::new(Duration::from_secs(1)).await;
+        time::delay_for(Duration::from_secs(1)).await;
         self.count
     }
 }
