@@ -67,10 +67,11 @@ impl<A: Actor> StageBuilder<A> {
         }
     }
 
+    #[cfg(any(feature = "tokio", feature = "async-std"))]
     pub fn spawn(self, actor: A) -> A::Proxy {
         let stage = self.finish(actor);
         let proxy = stage.proxy();
-        runtime::spawn(stage.run());
+        crate::runtime::spawn(stage.run());
         proxy
     }
 }
