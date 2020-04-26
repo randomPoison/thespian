@@ -3,24 +3,19 @@
 use crate::Actor;
 use futures::future::BoxFuture;
 
-pub trait SyncMessage: 'static + Sized + Send {
+pub trait Message: 'static + Sized + Send {
     type Actor: Actor;
-    type Result: Sized + Send;
 
-    fn handle(self, actor: &mut Self::Actor) -> Self::Result;
+    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, ()>;
 }
 
-pub trait AsyncMessage: 'static + Sized + Send {
+pub trait Request: 'static + Sized + Send {
     type Actor: Actor;
     type Result: Sized + Send;
 
     fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Result>;
 }
 
-pub trait SyncErasedMessage<A: Actor>: Send {
-    fn handle(self: Box<Self>, actor: &mut A);
-}
-
-pub trait AsyncErasedMessage<A: Actor>: Send {
+pub trait ErasedMessage<A: Actor>: Send {
     fn handle(self: Box<Self>, actor: &mut A) -> BoxFuture<'_, ()>;
 }

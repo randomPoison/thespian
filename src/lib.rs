@@ -1,4 +1,4 @@
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use log::*;
 use thiserror::Error;
 
@@ -50,23 +50,15 @@ pub struct MessageError {
     cause: MessageErrorCause,
 }
 
-impl From<oneshot::Canceled> for MessageError {
-    fn from(_: oneshot::Canceled) -> Self {
-        MessageError {
-            cause: MessageErrorCause::ActorStopped,
-        }
-    }
-}
-
-impl From<mpsc::SendError> for MessageError {
-    fn from(from: mpsc::SendError) -> Self {
+impl<T> From<mpsc::TrySendError<T>> for MessageError {
+    fn from(from: mpsc::TrySendError<T>) -> Self {
         let cause = if from.is_full() {
             MessageErrorCause::MailboxFull
         } else if from.is_disconnected() {
             MessageErrorCause::ActorStopped
         } else {
             warn!("Unknown cause of send error: {:?}", from);
-            MessageErrorCause::ActorStopped
+            MessageErrorCause::Unknown
         };
 
         MessageError { cause }
