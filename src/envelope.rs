@@ -27,7 +27,11 @@ impl<A: Actor> fmt::Debug for Envelope<A> {
 
 impl<M: Message> ErasedMessage<M::Actor> for M {
     fn handle(self: Box<Self>, actor: &mut M::Actor) -> BoxFuture<'_, ()> {
-        self.handle(actor).boxed()
+        // TODO: Remove the extra boxing here. In theory, we should be able to constrain
+        // this impl to only messages where `Output == ()`, but that's not currently
+        // supported. See https://github.com/rust-lang/rust/issues/20041 for more
+        // information.
+        Message::handle(*self, actor).map(|_| {}).boxed()
     }
 }
 

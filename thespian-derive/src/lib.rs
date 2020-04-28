@@ -96,6 +96,11 @@ pub fn actor(
                 ReturnType::Type(_, output) => output.to_token_stream(),
             };
 
+            let proxy_fn_output_ty = match &method.sig.output {
+                ReturnType::Default => quote! { () },
+                ReturnType::Type(_, output) => quote! { impl std::future::Future<Output = #output> }
+            };
+
             let send_fn = match method.sig.output {
                 ReturnType::Default => quote! { send_message },
                 ReturnType::Type(..) => quote! { send_request },
@@ -111,7 +116,7 @@ pub fn actor(
             quote! {
                 // Generate inherent impl on proxy type.
                 impl #proxy_ty {
-                    #vis fn #method_name(&self, #( #input_name: #input_ty, )*) -> thespian::Result<impl std::future::Future<Output = #output_ty>> {
+                    #vis fn #method_name(&mut self, #( #input_name: #input_ty, )*) -> thespian::Result<#proxy_fn_output_ty> {
                         self.inner.#send_fn(#message_ty( #( #input_name, )* ))
                     }
                 }
@@ -127,7 +132,7 @@ pub fn actor(
                     type Output = #output_ty;
 
                     fn handle(self, actor: &mut Self::Actor) -> thespian::futures::future::BoxFuture<'_, Self::Output> {
-                        thespian::futures::future::FutureExt::boxed(async {
+                        thespian::futures::future::FutureExt::boxed(async move {
                             actor.#method_name(#( self.#input_index, )*) #dot_await
                         })
                     }
