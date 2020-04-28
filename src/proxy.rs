@@ -38,38 +38,40 @@ impl<A: Actor> ProxyFor<A> {
         }
     }
 
-    pub async fn send_sync<M: SyncMessage<Actor = A>>(
-        &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
-        let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(SyncEnvelope {
-            message,
-            result_sender,
-        });
-        let envelope = Envelope::Sync(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
+    /// Sends a message to an actor.
+    ///
+    /// If the actor is still running and there is space in its message queue, the
+    /// message will be enqueued synchronously. Otherwise, an error will be returned.
+    pub fn send_message<M: Message<Actor = A>>(&mut self, message: M) -> Result<(), MessageError> {
+        let erased_message = Box::new(message);
+        let envelope = Envelope::Message(erased_message);
+        self.sink.try_send(envelope).map_err(Into::into)
     }
 
-    pub async fn send_async<M: AsyncMessage<Actor = A>>(
+    /// Sends a request to an actor, returning a future yielding the actor's response.
+    ///
+    /// If the actor has stopped or its message queue is full, this method will return
+    /// an error synchronously. Otherwise, the message will be queued and the returned
+    /// future will resolve to the actor's response.
+    ///
+    /// If the actor panics while handling the message, the panic will be propagated to
+    /// any code awaiting the response.
+    pub fn send_request<R: Message<Actor = A>>(
         &mut self,
-        message: M,
-    ) -> Result<M::Result, MessageError> {
+        message: R,
+    ) -> Result<impl Future<Output = R::Output>, MessageError> {
         let (result_sender, result) = oneshot::channel();
-        let erased_message = Box::new(AsyncEnvelope {
+        let erased_message = Box::new(RequestEnvelope {
             message,
             result_sender,
         });
-        let envelope = Envelope::Async(erased_message);
-        self.sink
-            .send(envelope)
-            .await
-            .map_err::<MessageError, _>(Into::into)?;
-        result.await.map_err(Into::into)
+        let envelope = Envelope::Message(erased_message);
+        self.sink.try_send(envelope)?;
+
+        // Message was successfully enqueued. Return a future that awaits the message
+        // response and panics if the actor failed to one, since the only case where an
+        // actor wouldn't send a response is if it panics while handling the request.
+        Ok(async { result.await.expect("Actor panicked while handling message") })
     }
 
     pub(crate) fn count(&self) -> usize {
@@ -86,7 +88,7 @@ impl<A: Actor> ProxyFor<A> {
 
 impl<A: Actor> Drop for ProxyFor<A> {
     fn drop(&mut self) {
-        // Manaully drop the inner ref count in order to ensure the count has decreased
+        // Manually drop the inner ref count in order to ensure the count has decreased
         // *before* the stage receives the drop message.
         mem::drop(self.proxy_count.take());
 

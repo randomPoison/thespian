@@ -108,8 +108,7 @@ impl<A: Actor> Stage<A> {
         // holds onto a copy of the proxy, that case should never happen right?
         while let Some(envelope) = self.receiver.next().await {
             match envelope {
-                Envelope::Sync(message) => message.handle(&mut self.actor),
-                Envelope::Async(message) => message.handle(&mut self.actor).await,
+                Envelope::Message(message) => message.handle(&mut self.actor).await,
 
                 // NOTE: We don't need to do anything in the case that a proxy was dropped, since
                 // we check the proxy count at the end of the loop body.
@@ -141,8 +140,7 @@ impl<A: Actor> Stage<A> {
         // Process any remaining messages.
         while let Some(envelope) = self.receiver.next().await {
             match envelope {
-                Envelope::Sync(message) => message.handle(&mut self.actor),
-                Envelope::Async(message) => message.handle(&mut self.actor).await,
+                Envelope::Message(message) => message.handle(&mut self.actor).await,
                 Envelope::ProxyDropped => {}
             }
         }

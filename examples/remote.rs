@@ -15,10 +15,7 @@ async fn main() {
     // thespian hides those implementation details and provides a simple, await-aware
     // way to communicate with the actor.
     for _ in 0..10 {
-        let id = actor
-            .add_count(1)
-            .await
-            .expect("Failed to invoke `add_id` on actor");
+        let id = actor.add_count(1).unwrap().await;
         println!("New count: {}", id);
     }
 }

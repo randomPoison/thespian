@@ -1,4 +1,4 @@
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use log::*;
 use thiserror::Error;
 
@@ -11,6 +11,12 @@ mod stage;
 // Helper module for abstracting over different runtimes.
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 mod runtime;
+
+// Re-export the futures crate so that it can be referenced by the generated code.
+// We don't want this to be part of the crate's stable API, though, so we hide it in
+// the generated docs.
+#[doc(hidden)]
+pub use futures;
 
 pub use crate::{message::*, proxy::*, remote::*, stage::*};
 pub use thespian_derive::*;
@@ -44,29 +50,23 @@ pub trait Actor: 'static + Sized + Send {
     }
 }
 
+pub type Result<T> = std::result::Result<T, MessageError>;
+
 #[derive(Debug, Clone, Error)]
 #[error("{cause}")]
 pub struct MessageError {
     cause: MessageErrorCause,
 }
 
-impl From<oneshot::Canceled> for MessageError {
-    fn from(_: oneshot::Canceled) -> Self {
-        MessageError {
-            cause: MessageErrorCause::ActorStopped,
-        }
-    }
-}
-
-impl From<mpsc::SendError> for MessageError {
-    fn from(from: mpsc::SendError) -> Self {
+impl<T> From<mpsc::TrySendError<T>> for MessageError {
+    fn from(from: mpsc::TrySendError<T>) -> Self {
         let cause = if from.is_full() {
             MessageErrorCause::MailboxFull
         } else if from.is_disconnected() {
             MessageErrorCause::ActorStopped
         } else {
             warn!("Unknown cause of send error: {:?}", from);
-            MessageErrorCause::ActorStopped
+            MessageErrorCause::Unknown
         };
 
         MessageError { cause }
