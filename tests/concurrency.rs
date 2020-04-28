@@ -34,7 +34,7 @@ async fn multiple_tasks() {
         let mut actor = actor.clone();
         let join_handle = tokio::spawn(async move {
             for _ in 0..10 {
-                actor.add_id(1).unwrap();
+                actor.add_id(1).unwrap().await;
             }
         });
         tasks.push(join_handle);
