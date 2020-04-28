@@ -10,7 +10,7 @@
 //!
 //! [#9]: https://github.com/randomPoison/thespian/issues/9
 
-#![allow(unused_imports)]
+#![allow(unused_imports, clippy::blacklisted_name)]
 
 use futures::{channel::oneshot, future};
 use std::time::Duration;
