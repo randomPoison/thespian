@@ -21,7 +21,6 @@ jobs:
       - name: Run tests (tokio)
         run: |
           cargo test --verbose --features tokio
-          cargo fmt -- --check
 
       - name: Clippy lints
         uses: actions-rs/clippy-check@v1

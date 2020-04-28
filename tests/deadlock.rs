@@ -12,9 +12,9 @@
 
 #![allow(unused_imports)]
 
-use futures::{future, channel::oneshot};
-use thespian::*;
+use futures::{channel::oneshot, future};
 use std::time::Duration;
+use thespian::*;
 
 #[derive(Debug, Actor)]
 pub struct Foo {
@@ -60,8 +60,14 @@ async fn possible_deadlock() {
     // Create both actors, giving each one a proxy for the other.
     let (foo_stage, foo_remote) = StageBuilder::new();
     let (bar_stage, bar_remote) = StageBuilder::new();
-    foo_stage.spawn(Foo { result: Some(sender), bar: bar_remote.proxy() });
-    bar_stage.spawn(Bar { value: expected, foo: foo_remote.proxy() });
+    foo_stage.spawn(Foo {
+        result: Some(sender),
+        bar: bar_remote.proxy(),
+    });
+    bar_stage.spawn(Bar {
+        value: expected,
+        foo: foo_remote.proxy(),
+    });
 
     // Send the initial message to `Foo` to start the potential deadlock.
     let mut foo = foo_remote.proxy();
@@ -69,6 +75,9 @@ async fn possible_deadlock() {
 
     // Request the updated value from `foo`. If the actors have deadlocked the timeout
     // will fire instead.
-    let actual = tokio::time::timeout(Duration::from_millis(500), receiver).await.unwrap().unwrap();
+    let actual = tokio::time::timeout(Duration::from_millis(500), receiver)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(expected, actual);
 }
