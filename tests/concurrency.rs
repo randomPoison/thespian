@@ -21,7 +21,7 @@ impl MyActor {
 }
 
 // Test having multiple tasks communicate with an actor concurrently. This uses the
-// default runtime implementation, which is a threadpool, so it also tests threading
+// default runtime implementation, which is a thread pool, so it also tests threading
 // support.
 #[tokio::test]
 async fn multiple_tasks() {
@@ -34,18 +34,12 @@ async fn multiple_tasks() {
         let mut actor = actor.clone();
         let join_handle = tokio::spawn(async move {
             for _ in 0..10 {
-                actor
-                    .add_id(1)
-                    .await
-                    .expect("Failed to invoke `add_id` on actor");
+                actor.add_id(1).unwrap();
             }
         });
         tasks.push(join_handle);
     }
 
     future::join_all(tasks).await;
-    assert_eq!(
-        100,
-        actor.id().await.expect("Failed to invoke `id` on actor")
-    );
+    assert_eq!(100, actor.id().unwrap().await,);
 }

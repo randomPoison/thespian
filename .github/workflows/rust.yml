@@ -4,36 +4,33 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+      - uses: actions/checkout@v1
 
-    - name: Install Components
-      run: rustup component add rustfmt
+      - name: Install Components
+        run: rustup component add rustfmt
 
-    - name: Build (no features)
-      run: cargo build --verbose
+      - name: Build (no features)
+        run: cargo build --verbose
 
-    - name: Build (async-std)
-      run: cargo build --verbose --features async-std
+      - name: Build (async-std)
+        run: cargo build --verbose --features async-std
 
-    - name: Run tests (tokio)
-      run: |
-        cargo test --verbose --features tokio
-        cargo fmt -- --check
+      - name: Run tests (tokio)
+        run: |
+          cargo test --verbose --features tokio
+          cargo fmt -- --check
 
-    - name: Clippy lints
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-targets --features tokio -- -D warnings
+      - name: Clippy lints
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --features tokio -- -D warnings
 
-    - name: Check formatting
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
-      env:
-        SPATIAL_LIB_DIR: "dependencies"
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
