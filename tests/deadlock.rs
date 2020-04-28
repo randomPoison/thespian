@@ -45,8 +45,6 @@ impl Bar {
         self.foo.add(self.value).unwrap();
         true
     }
-
-    pub fn checkpoint(&self) -> () {}
 }
 
 #[cfg(feature = "tokio")]
