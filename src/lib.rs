@@ -12,6 +12,12 @@ mod stage;
 #[cfg(any(feature = "tokio", feature = "async-std"))]
 mod runtime;
 
+// Re-export the futures crate so that it can be referenced by the generated code.
+// We don't want this to be part of the crate's stable API, though, so we hide it in
+// the generated docs.
+#[doc(hidden)]
+pub use futures;
+
 pub use crate::{message::*, proxy::*, remote::*, stage::*};
 pub use thespian_derive::*;
 
@@ -43,6 +49,8 @@ pub trait Actor: 'static + Sized + Send {
         proxy
     }
 }
+
+pub type Result<T> = std::result::Result<T, MessageError>;
 
 #[derive(Debug, Clone, Error)]
 #[error("{cause}")]

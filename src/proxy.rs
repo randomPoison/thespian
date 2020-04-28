@@ -56,10 +56,10 @@ impl<A: Actor> ProxyFor<A> {
     ///
     /// If the actor panics while handling the message, the panic will be propagated to
     /// any code awaiting the response.
-    pub fn send_request<R: Request<Actor = A>>(
+    pub fn send_request<R: Message<Actor = A>>(
         &mut self,
         message: R,
-    ) -> Result<impl Future<Output = R::Result>, MessageError> {
+    ) -> Result<impl Future<Output = R::Output>, MessageError> {
         let (result_sender, result) = oneshot::channel();
         let erased_message = Box::new(RequestEnvelope {
             message,

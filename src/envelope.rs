@@ -7,7 +7,7 @@
 //! * The message must be bundled with oneshot channel in order to send the message
 //!   response back to the sender.
 
-use crate::{Actor, ErasedMessage, Message, Request};
+use crate::{Actor, ErasedMessage, Message};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use std::fmt;
 
@@ -31,12 +31,12 @@ impl<M: Message> ErasedMessage<M::Actor> for M {
     }
 }
 
-pub(crate) struct RequestEnvelope<M: Request> {
-    pub(crate) result_sender: oneshot::Sender<M::Result>,
+pub(crate) struct RequestEnvelope<M: Message> {
+    pub(crate) result_sender: oneshot::Sender<M::Output>,
     pub(crate) message: M,
 }
 
-impl<M: Request> ErasedMessage<M::Actor> for RequestEnvelope<M> {
+impl<M: Message> ErasedMessage<M::Actor> for RequestEnvelope<M> {
     fn handle(self: Box<Self>, actor: &mut M::Actor) -> BoxFuture<'_, ()> {
         async move {
             let result = self.message.handle(actor).await;

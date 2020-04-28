@@ -1,12 +1,6 @@
-extern crate proc_macro;
-
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
-use syn::{
-    parse::{Parse, ParseStream},
-    punctuated::Punctuated,
-    token::{Async, Comma},
-    *,
-};
+use syn::{punctuated::Punctuated, *};
 
 #[proc_macro_derive(Actor)]
 pub fn derive_actor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -43,252 +37,128 @@ pub fn actor(
     _args: proc_macro::TokenStream,
     tokens: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let mut result = tokens.clone();
+    let mut result = TokenStream::from(tokens.clone());
 
-    let input = parse_macro_input!(tokens as Actor);
+    // Parse the input as an impl block, rejecting any other item types.
+    let input = parse_macro_input!(tokens as ItemImpl);
 
-    let actor_ident = input.ident;
-    let proxy_ident = format_ident!("{}Proxy", actor_ident);
-
-    let proxy_methods = input
-        .methods
+    // Gather all valid method definitions in the impl block, specifically ones with a
+    // receiver since associated functions can't be used as messages.
+    let methods = input
+        .items
         .iter()
-        .map(|method| method.quote_proxy_method(&actor_ident));
-    let method_structs = input
-        .methods
+        .filter_map(|item| match item {
+            ImplItem::Method(item) => Some(item),
+            _ => None,
+        })
+        .filter(|method| method.sig.receiver().is_some())
+        .collect::<Vec<_>>();
+
+    let self_ty = input.self_ty;
+    let mangled_self_ty = match mangled_type_name(&self_ty) {
+        Ok(name) => name,
+        Err(err) => return err.to_compile_error().into(),
+    };
+    let proxy_ty = format_ident!("{}Proxy", mangled_self_ty);
+
+    // Collect the generated items for each message handler defined in the impl block.
+    let generated = methods
         .iter()
-        .map(|method| method.quote_message_struct(&actor_ident));
+        .map(|method| {
+            let vis = &method.vis;
+            let method_name = &method.sig.ident;
+            let message_ty = format_ident!("{}__{}", mangled_self_ty, method.sig.ident);
 
-    let generated = quote! {
-        impl #proxy_ident {
-            #( #proxy_methods )*
-        }
+            let inputs = method
+                .sig
+                .inputs
+                .iter()
+                .filter_map(|arg| match arg {
+                    FnArg::Typed(arg) => Some(arg),
+                    FnArg::Receiver(_) => None,
+                })
+                .collect::<Punctuated<_, Token![,]>>();
 
-        #( #method_structs )*
+            // Extract normalized names and the type for each input for the message.
+            let input_name = inputs
+                .iter()
+                .enumerate()
+                .map(|(index, arg)| match &*arg.pat {
+                    Pat::Ident(pat) => pat.ident.clone(),
+                    _ => format_ident!("arg{}", index),
+                })
+                .collect::<Vec<_>>();
+            let input_ty = inputs.iter().map(|arg| &arg.ty).collect::<Vec<_>>();
+            let input_index = inputs.iter().enumerate().map(|(index, _)| Literal::usize_unsuffixed(index));
+
+            let output_ty = match &method.sig.output {
+                ReturnType::Default => quote! { () },
+                ReturnType::Type(_, output) => output.to_token_stream(),
+            };
+
+            let send_fn = match method.sig.output {
+                ReturnType::Default => quote! { send_message },
+                ReturnType::Type(..) => quote! { send_request },
+            };
+
+            // If the message handler is an async fn, we need to append `.await` when we invoke
+            // the method in order to ensure we fully execute the handler.
+            let dot_await = match &method.sig.asyncness {
+                Some(_) => quote! { .await },
+                None => quote! {},
+            };
+
+            quote! {
+                // Generate inherent impl on proxy type.
+                impl #proxy_ty {
+                    #vis fn #method_name(&self, #( #input_name: #input_ty, )*) -> thespian::Result<impl std::future::Future<Output = #output_ty>> {
+                        self.inner.#send_fn(#message_ty( #( #input_name, )* ))
+                    }
+                }
+
+                // Generate the type for the message.
+                #[doc(hidden)]
+                #[allow(bad_style)]
+                pub struct #message_ty( #( #input_ty, )* );
+
+                // Generate either a `Message` or a `Request` impl for the message type.
+                impl thespian::Message for #message_ty {
+                    type Actor = #self_ty;
+                    type Output = #output_ty;
+
+                    fn handle(self, actor: &mut Self::Actor) -> thespian::futures::future::BoxFuture<'_, Self::Output> {
+                        thespian::futures::future::FutureExt::boxed(async {
+                            actor.#method_name(#( self.#input_index, )*) #dot_await
+                        })
+                    }
+                }
+            }
+        })
+        .collect::<TokenStream>();
+
+    // Append the generated code to the original code and return the whole thing as the
+    // output.
+    result.append_all(generated);
+    result.into()
+}
+
+/// Generates a valid identifier from the given type.
+///
+/// Returns an error if the type is not a `Type::Path`. Otherwise, the segments of
+/// the path are concatenated with `__` to create an identifier from the type
+/// reference.
+fn mangled_type_name(ty: &Type) -> syn::Result<Ident> {
+    let path = match ty {
+        Type::Path(path) => path,
+        _ => return Err(Error::new_spanned(ty, "Unsupported type expression, only type paths are supported, e.g. `Foo` or `foo::bar::Baz`")),
     };
 
-    result.extend(proc_macro::TokenStream::from(generated));
-    result
-}
-
-// TODO: Support generic actor types.
-#[derive(Debug)]
-struct Actor {
-    attrs: Vec<Attribute>,
-    ident: Ident,
-    methods: Vec<ActorMethod>,
-}
-
-impl Parse for Actor {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = input.call(Attribute::parse_outer)?;
-        input.parse::<Token![impl]>()?;
-        let ident = input.parse()?;
-        let content;
-        braced!(content in input);
-
-        let mut methods = Vec::<ActorMethod>::new();
-        while !content.is_empty() {
-            methods.push(content.parse()?);
-        }
-
-        Ok(Actor {
-            attrs,
-            ident,
-            methods,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct ActorMethod {
-    attrs: Vec<Attribute>,
-    vis: Visibility,
-    asyncness: Option<Async>,
-    ident: Ident,
-    receiver: Receiver,
-    args: Vec<(Ident, Box<Type>)>,
-    output: ReturnType,
-}
-
-impl ActorMethod {
-    fn quote_proxy_method(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
-        let vis = &self.vis;
-        let ident = &self.ident;
-
-        // TODO: We can't use `args` directly as the parameters for the function since
-        // the user might have used a pattern for one of the parameters instead of
-        // binding it to a variable name. In these cases, we need to generate an
-        // alternate variable name to use instead.
-        let args: Punctuated<_, Comma> = self
-            .args
-            .iter()
-            .map(|(ident, ty)| quote! { #ident: #ty })
-            .collect();
-
-        // Determine which send method on `ProxyFor<A>` should be used to send the method
-        // based on whether or not the message handler is async.
-        let send_method = if self.asyncness.is_some() {
-            quote! { send_async }
-        } else {
-            quote! { send_sync }
-        };
-
-        // Generate the expression for initializing the message object.
-        let struct_ident = self.message_struct_ident(actor_ident);
-        let struct_params: Punctuated<_, Comma> =
-            self.args.iter().map(|(ident, _)| ident).collect();
-
-        let result_type = self.result_type();
-
-        quote! {
-            #vis async fn #ident(&mut self, #args) -> Result<#result_type, thespian::MessageError> {
-                self.inner.#send_method(#struct_ident(#struct_params)).await
-            }
-        }
-    }
-
-    fn quote_message_struct(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
-        let ident = self.message_struct_ident(actor_ident);
-        let args: Punctuated<_, Comma> = self.args.iter().map(|(_, ty)| ty).collect();
-        let message_impl = if self.asyncness.is_some() {
-            self.impl_async_message(actor_ident)
-        } else {
-            self.impl_sync_message(actor_ident)
-        };
-
-        quote! {
-            #[allow(bad_style)]
-            struct #ident(#args);
-
-            #message_impl
-        }
-    }
-
-    fn impl_sync_message(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
-        let method_ident = &self.ident;
-        let struct_ident = self.message_struct_ident(actor_ident);
-        let result_type = self.result_type();
-        let forward_params = self
-            .args
-            .iter()
-            .enumerate()
-            .map(|(index, _)| index)
-            .map(Index::from);
-
-        quote! {
-            impl thespian::SyncMessage for #struct_ident {
-                type Actor = #actor_ident;
-                type Result = #result_type;
-
-                fn handle(self, actor: &mut Self::Actor) -> Self::Result {
-                    actor.#method_ident(#( self.#forward_params, )*)
-                }
-            }
-        }
-    }
-
-    fn impl_async_message(&self, actor_ident: &Ident) -> proc_macro2::TokenStream {
-        let method_ident = &self.ident;
-        let struct_ident = self.message_struct_ident(actor_ident);
-        let result_type = self.result_type();
-        let forward_params = self
-            .args
-            .iter()
-            .enumerate()
-            .map(|(index, _)| index)
-            .map(Index::from);
-
-        quote! {
-            impl thespian::AsyncMessage for #struct_ident {
-                type Actor = #actor_ident;
-                type Result = #result_type;
-
-                fn handle(self, actor: &mut Self::Actor) -> futures::future::BoxFuture<'_, Self::Result> {
-                    futures::future::FutureExt::boxed(actor.#method_ident(#( self.#forward_params, )*))
-                }
-            }
-        }
-    }
-
-    fn message_struct_ident(&self, actor_ident: &Ident) -> Ident {
-        format_ident!("{}__{}", actor_ident, self.ident)
-    }
-
-    fn result_type(&self) -> Box<Type> {
-        match &self.output {
-            ReturnType::Default => Box::new(syn::parse_str("()").unwrap()),
-            ReturnType::Type(_, ty) => ty.clone(),
-        }
-    }
-}
-
-impl Parse for ActorMethod {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = input.call(Attribute::parse_outer)?;
-        let vis: Visibility = input.parse()?;
-        let asyncness = input.parse::<Token![async]>().ok();
-        input.parse::<Token![fn]>()?;
-        let ident: Ident = input.parse()?;
-
-        let content;
-        parenthesized!(content in input);
-        let raw_args: Punctuated<FnArg, Comma> = content.parse_terminated(FnArg::parse)?;
-
-        let mut receiver = None;
-        let mut args = Vec::new();
-        for (index, arg) in raw_args.into_iter().enumerate() {
-            match arg {
-                FnArg::Receiver(recv) => {
-                    // TODO: Validate that receiver is `&self` or `&mut self`.
-                    receiver = Some(recv);
-                }
-
-                FnArg::Typed(PatType { pat, ty, .. }) => {
-                    let ident = match *pat {
-                        // If the function has a regular-ass ident for the parameter, reuse that
-                        // ident in the generated function so that the parameter names in the
-                        // generated code still make sense.
-                        Pat::Ident(PatIdent { ident, .. }) => ident,
-
-                        // If the parameter doesn't have an ident, generate one to use in the
-                        // generated function.
-                        //
-                        // TODO: Can we detect and handle conflicts with existing argument names? It
-                        // shouldn't happen, since we're generating non-standard identifiers, but if
-                        // we can be robust against that case we may as well be.
-                        _ => format_ident!("__arg{}", index),
-                    };
-
-                    args.push((ident, ty));
-                }
-            }
-        }
-
-        let output = input.parse()?;
-
-        // TODO: I guess this will probably break on `where` clauses?
-
-        // NOTE: We must fully parse the body of the method in order to
-        let content;
-        braced!(content in input);
-        let _ = content.call(Block::parse_within)?;
-
-        let receiver = receiver.ok_or_else(|| {
-            syn::Error::new(
-                ident.span(),
-                "Actor method must take `&self` or `&mut self`",
-            )
-        })?;
-
-        Ok(ActorMethod {
-            attrs,
-            vis,
-            asyncness,
-            ident,
-            receiver,
-            args,
-            output,
-        })
-    }
+    let ident_string = path
+        .path
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("__");
+    Ok(format_ident!("{}", ident_string))
 }

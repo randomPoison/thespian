@@ -48,11 +48,11 @@ pub struct MyActorProxy {
 }
 
 impl MyActorProxy {
-    pub fn add_sync(&mut self, value: usize) -> Result<impl Future<Output = usize>, MessageError> {
+    pub fn add_sync(&mut self, value: usize) -> thespian::Result<impl Future<Output = usize>> {
         self.inner.send_request(MyActor__add_sync(value))
     }
 
-    pub fn add_async(&mut self, value: usize) -> Result<impl Future<Output = usize>, MessageError> {
+    pub fn add_async(&mut self, value: usize) -> thespian::Result<impl Future<Output = usize>> {
         self.inner.send_request(MyActor__add_async(value))
     }
 }
@@ -69,11 +69,11 @@ impl ActorProxy for MyActorProxy {
 #[allow(bad_style)]
 struct MyActor__add_sync(usize);
 
-impl Request for MyActor__add_sync {
+impl Message for MyActor__add_sync {
     type Actor = MyActor;
-    type Result = usize;
+    type Output = usize;
 
-    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Result> {
+    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Output> {
         futures::future::ready(actor.add_sync(self.0)).boxed()
     }
 }
@@ -82,11 +82,11 @@ impl Request for MyActor__add_sync {
 #[allow(bad_style)]
 struct MyActor__add_async(usize);
 
-impl Request for MyActor__add_async {
+impl Message for MyActor__add_async {
     type Actor = MyActor;
-    type Result = usize;
+    type Output = usize;
 
-    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Result> {
+    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Output> {
         actor.add_async(self.0).boxed()
     }
 }
@@ -97,6 +97,7 @@ struct MyActor__add(usize);
 
 impl Message for MyActor__add {
     type Actor = MyActor;
+    type Output = ();
 
     fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, ()> {
         futures::future::ready(actor.add(self.0)).boxed()

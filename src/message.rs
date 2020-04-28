@@ -5,15 +5,9 @@ use futures::future::BoxFuture;
 
 pub trait Message: 'static + Sized + Send {
     type Actor: Actor;
+    type Output: Sized + Send;
 
-    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, ()>;
-}
-
-pub trait Request: 'static + Sized + Send {
-    type Actor: Actor;
-    type Result: Sized + Send;
-
-    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Result>;
+    fn handle(self, actor: &mut Self::Actor) -> BoxFuture<'_, Self::Output>;
 }
 
 pub trait ErasedMessage<A: Actor>: Send {
