@@ -5,7 +5,7 @@ authors = ["David LeGare <dlegare.1001@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-derivative = "1.0.3"
+derivative = "2.1.1"
 futures = "0.3.1"
 log = "0.4.8"
 num_enum = "0.4.1"
