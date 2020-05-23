@@ -124,7 +124,7 @@ pub fn actor(
                 // Generate the type for the message.
                 #[doc(hidden)]
                 #[allow(bad_style)]
-                pub struct #message_ty( #( #input_ty, )* );
+                struct #message_ty( #( #input_ty, )* );
 
                 // Generate either a `Message` or a `Request` impl for the message type.
                 impl thespian::Message for #message_ty {
